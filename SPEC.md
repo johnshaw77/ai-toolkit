@@ -1,0 +1,198 @@
+# SPEC：smart-scaffold（第一輪）
+
+一支**開新專案的腳手架工具**。用逐步問答問完該問的，然後生成骨架、裝依賴、
+`git init` 並產生第一顆中文 commit，最後把使用者交棒給 `/unattended:spec`。
+
+存在的理由：現有專案都是「開工之後才看到生出來的結構，然後妥協」，所以每個
+專案長得都不一樣。把結構決定的時機提前到**什麼都還沒寫的時候**，改的成本是零。
+
+## 這一輪的範圍
+
+**做**：問答引擎、埠號偵測、模板渲染、`py` preset、後置動作（裝依賴 + git）。
+**下一輪做**：`app` preset（FastAPI + Vue3 + antd）的模板內容——那包含約 5000 行
+要從既有專案搬過來並**逐檔去品牌化**的程式碼，是獨立且風險較高的一輪。
+
+這一輪結束時，`python3 -m smart_scaffold py` 必須能開出一個可以直接動工的
+Python 專案。
+
+## 技術約束（不是建議，是要求）
+
+- Python **3.12**，用 `uv` 管理。
+- **執行期零第三方依賴**——只用標準庫。`pytest` 只放在 dev extra 裡。
+  理由同 `transcript2html.py`：這支工具要能在任何一台剛裝好的機器上跑。
+- 套件名 `smart_scaffold`，CLI 名 `smart-scaffold`（`[project.scripts]` 註冊）。
+- **跨平台**：Windows 沒有 `lsof`、可能沒有 `docker`。缺任何外部指令都必須降級
+  而不是拋例外。Python 在 Windows 叫 `python` 不是 `python3`。
+
+---
+
+## F1　問題定義引擎
+
+把「要問哪些問題」寫成資料，跟「怎麼顯示」分開。這是整支工具的骨架——
+之後要換成 TUI 或 GUI 時，只換 renderer，不動這裡。
+
+一個問題至少要能表達：`key`、提示文字、型別（字串／布林／單選）、`default`
+（可以是值，也可以是算出來的函式）、`validate`、以及 `when`（依前面答案決定
+這題要不要問）。
+
+**完成條件**
+
+1. `Question` 與 `ask_all(questions, answers)` 有單元測試，不經由終端機也能跑
+   ——測試用預先填好的答案字典驅動，不得依賴 `input()`。
+2. `when` 條件為假的題目**不會出現在結果裡**，也不會套用 `default`。
+3. `validate` 失敗時重問同一題，不會往下走；連續失敗 3 次才放棄並回傳非零離開碼。
+4. `default` 支援 `{name}` 這種引用前面答案的字串插值（例：路徑預設
+   `~/Desktop/@SideProjects/{name}`）。
+
+## F2　逐步問答 CLI 與旗標模式
+
+同一份問題定義要能走兩條路：互動問答，以及旗標一次給完。
+
+**完成條件**
+
+1. `argparse` 的參數**由問題定義自動產生**，不得手寫第二份清單。
+   新增一題只改一個地方——測試要證明這件事（新增一題後 `--help` 就有它）。
+2. 旗標已給的題目不再互動詢問；沒給的才問。全部給齊時**完全不需要互動**
+   （測試用 stdin 關閉的狀態跑過一次）。
+3. `--help` 輸出包含每一題的提示文字與預設值。
+4. 非互動環境（stdin 不是 tty）而又有必填項沒給時，**明確報錯並列出缺哪幾個**，
+   不得卡住等輸入。
+
+## F3　埠號偵測
+
+開專案時直接給一個沒被佔用的預設埠，不要讓使用者自己記得哪些用過。
+（既有專案的埠是手動錯開的：5273 / 5175 / 5173、8000 / 8100。）
+
+**完成條件**
+
+1. `suggest_free_port(start)` 回傳從 `start` 起第一個沒被佔用的埠。
+2. 佔用判定至少涵蓋兩個來源：實際 bind 測試，以及 `docker ps` 列出的已發布埠。
+3. **`docker` 不存在、沒在跑、或指令逾時，都只是少一個來源，不得讓程式中斷。**
+   這條要有測試（把指令換成必定失敗的假指令）。
+4. 連續 50 個埠都被佔用時回報錯誤，不無限迴圈。
+
+## F4　模板渲染器
+
+把 `templates/<preset>/` 整棵複製到目標路徑，過程中替換變數。
+
+**完成條件**
+
+1. 佔位符格式是 `{{var}}`。**不得使用 `string.Template` 的 `$var`**——模板裡有
+   Makefile 與 shell，`$` 會衝突。這條要有測試：模板內含 `$(MAKE)` 與 `$$` 時，
+   渲染後必須一字不變。
+2. **檔名與資料夾名也要替換**（例：`{{name}}.code-workspace`）。
+3. 模板裡出現定義中沒有的變數時**中止並指出是哪個檔案的哪個變數**，
+   不得靜靜留下 `{{...}}` 字面值。
+4. 目標路徑已存在且非空時中止，不覆蓋。
+5. 二進位檔（圖片等）原樣複製，不做文字替換也不因解碼失敗而中斷。
+6. 檔案權限保留——`.sh` 複製過去要還是可執行。
+
+## F5　`py` preset 模板
+
+對應既有 `stock_shioaji` 的形態：`uv` + `src/` 套件分層 + `scripts/` entry point
++ `config/settings.yaml` + `.env.example`。
+
+模板至少包含：`pyproject.toml`（含 ruff 設定：`line-length = 100`、
+`select = ["E","F","I","UP","B","SIM"]`）、`.python-version`、`.gitignore`
+（含 `.env`、`__pycache__/`、`.venv/`、`.DS_Store`）、`.env.example`（每個變數
+寫用途與預設值，不是只列 key）、`README.md`（繁體中文，七段：標題／一句話描述／
+專案概述／核心功能／技術棧／專案結構樹／快速開始）、`CLAUDE.md`、
+`src/{{name}}/__init__.py`、`scripts/`、`config/settings.yaml`、`tests/`。
+
+**完成條件**
+
+1. 生成出來的專案在裡面跑 `uv sync --extra dev` 成功、`uv run pytest` 全綠
+   （模板自帶至少一個會通過的樣板測試）。
+2. 生成出來的專案跑 `uv run ruff check .` 零錯誤。
+3. README 與 CLAUDE.md 裡的專案名稱、描述**都已被替換**，搜不到任何 `{{`。
+4. `.gitignore` 確實含 `.env`，且 `.env.example` 存在、`.env` 不存在。
+
+## F6　後置動作
+
+生成完檔案之後依序：裝依賴 → `git init -b main` → 第一顆 commit → 印出下一步。
+
+**完成條件**
+
+1. 依賴安裝失敗時**不中止**——印出警告、繼續 git 步驟，最後在總結裡明講
+   「依賴沒裝成功，請自己跑 `uv sync`」。（沒網路時整支工具不該白跑。）
+2. `git init -b main`，分支名必須是 `main`。
+3. 初始 commit 的訊息是**繁體中文**。驗證方式：`git log -1 --pretty=%s` 的輸出
+   不得包含 `Initial commit`，且必須含中文字元。
+4. commit 之前先確認 `.gitignore` 已就位，且 `git status --porcelain` 裡
+   **沒有 `.venv/` 或 `.env`**。
+5. 最後印出的下一步必須包含實際可複製的指令，且提到 `/unattended:spec`。
+6. `--no-install` 與 `--no-git` 兩個旗標可以各自跳過對應步驟。
+
+## F7　smart-scaffold 自己的專案骨架
+
+這支工具本身也要是個像樣的專案。
+
+**完成條件**
+
+1. `pyproject.toml`（Python 3.12、`[project.scripts] smart-scaffold`、
+   ruff 設定同上、pytest 設定 `testpaths = ["tests"]`）。
+2. `README.md`：繁體中文，寫清楚「這是什麼、怎麼安裝、怎麼用、模板放在哪、
+   怎麼新增一個 preset」。
+3. `.gitignore`、`CLAUDE.md`（給未來的 session 讀：模板在 `templates/`、
+   執行期零第三方依賴、新增問題只改問題定義那一處）。
+4. `uv run ruff check .` 零錯誤。
+
+---
+
+## 完成的定義
+
+全部滿足才算做完，沒滿足就繼續做，不要先回報：
+
+1. **`uv run pytest` 全綠**，且 F1–F4 的測試合計**不少於 25 個案例**。
+2. **`uv run ruff check .` 零錯誤**（smart-scaffold 自己，以及生成出來的專案）。
+3. **實際開一個真專案並驗證**，這是最重要的一條。步驟固定如下，回報時要貼出
+   實際輸出：
+
+   ```
+   uv run smart-scaffold py --name demo_tool --path /tmp/scaffold-check/demo_tool
+   cd /tmp/scaffold-check/demo_tool
+   uv sync --extra dev && uv run pytest && uv run ruff check .
+   git log -1 --pretty=%s          # 必須是中文
+   git branch --show-current       # 必須是 main
+   grep -r '{{' . --exclude-dir=.git --exclude-dir=.venv   # 必須無輸出
+   ```
+
+4. **互動模式也要實際走過一次**（不是只跑旗標模式）：把每一題都用預設值按過去，
+   確認問答流程不會卡住、預設埠號是活的。回報時說明看到什麼。
+5. 文件寫到正確的地方：`README.md`（改寫，精簡）、`docs/DECISIONS.md`（追加取捨
+   與理由）、`docs/VERIFICATION.md`（追加這輪實際驗證看到什麼）。
+
+**這是 CLI 工具，沒有前端，不需要 Chrome MCP。** 第 3 與第 4 條就是這個專案的
+「實際跑一次」。
+
+## 實作順序
+
+`F7 → F1 → F2 → F3 → F4 → F5 → F6`
+
+先把自己的骨架立起來（F7）才有地方寫測試。接著純邏輯、好測的先做
+（F1–F4），模板內容（F5）與需要碰檔案系統與 git 的後置動作（F6）排後面。
+
+**每完成一項就跑一次 `uv run pytest`**，不要全部寫完才驗。每一項對應一顆 commit。
+
+## 取捨授權
+
+- 規格沒寫到的細節——模組怎麼切、函式命名、錯誤訊息用字、問答的提示文字怎麼寫、
+  README 的實際內容、commit 訊息怎麼下——**一律自行決定**，選你認為最好的做法，
+  把理由寫進 `docs/DECISIONS.md`。不要為了這類問題停下來詢問。
+- 模板要放哪些檔案，以上列的是**下限不是上限**。你認為該加的（例如
+  `.editorconfig`、`Makefile`）就加，寫進 DECISIONS。
+- 唯一不可自行更動的是「技術約束」那節與各項的完成條件。
+
+**卡住時**：同一項嘗試兩次仍無法解決就跳過，繼續下一項，最後在 README 的
+「未完成事項」說明卡在哪、試過什麼。
+
+## 這一輪不要做的事
+
+- **不要做 `app` preset 的模板內容**（FastAPI / Vue / antd / auth / 分頁殼 /
+  DataTable）。那是下一輪。這一輪可以先預留 `templates/app/` 這個資料夾與
+  preset 的分派機制，但不要填內容。
+- **不要從 smart_lims / smart_qms 複製任何程式碼進來。** 那些是公司專案，
+  這一輪完全用不到。
+- 不要做 TUI 或 GUI。問題定義與 renderer 分離就是為了之後能加，但這一輪只做
+  終端機問答。
+- 不要 `git push`，也不要建立 GitHub repo。
