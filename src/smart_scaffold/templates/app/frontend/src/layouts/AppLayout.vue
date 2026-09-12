@@ -2,7 +2,12 @@
   <a-layout class="shell">
     <a-layout-header class="header">
       <div class="brand">
-        <button class="collapse-btn" type="button" @click="appStore.sidebarCollapsed = !appStore.sidebarCollapsed">
+        <button
+          class="collapse-btn"
+          type="button"
+          aria-label="收合側邊欄"
+          @click="appStore.sidebarCollapsed = !appStore.sidebarCollapsed"
+        >
           <MenuUnfoldOutlined v-if="appStore.sidebarCollapsed" />
           <MenuFoldOutlined v-else />
         </button>
@@ -12,16 +17,20 @@
 
       <div class="header-actions">
         <a-tooltip :title="appStore.darkMode ? '切換成亮色' : '切換成深色'">
-          <a-button type="text" @click="appStore.darkMode = !appStore.darkMode">
+          <a-button
+            type="text"
+            aria-label="切換深色模式"
+            @click="appStore.darkMode = !appStore.darkMode"
+          >
             <BulbOutlined />
           </a-button>
         </a-tooltip>
 
         <a-dropdown>
-          <span class="user-trigger">
+          <button class="user-trigger" type="button" aria-label="使用者選單">
             <a-avatar size="small">{{ userInitial }}</a-avatar>
             <span class="user-name">{{ auth.user?.full_name ?? '未登入' }}</span>
-          </span>
+          </button>
           <template #overlay>
             <a-menu>
               <a-menu-item key="email" disabled>{{ auth.user?.email }}</a-menu-item>
@@ -161,8 +170,11 @@ async function handleSignOut(): Promise<void> {
   align-items: center;
   gap: 8px;
   padding: 4px 8px;
-  border-radius: 6px;
+  color: inherit;
   cursor: pointer;
+  background: none;
+  border: none;
+  border-radius: 6px;
 }
 
 .user-name {

@@ -6,7 +6,8 @@ help:
 	@echo "dev      同時跑後端與前端（需要兩個終端機時請分別跑 api / web）"
 	@echo "api      只跑後端（http://127.0.0.1:{{backend_port}}）"
 	@echo "web      只跑前端（http://localhost:{{frontend_port}}）"
-	@echo "test     跑後端測試"
+	@echo "test     跑後端測試與前端單元測試"
+	@echo "e2e      跑端對端測試（會自己把前後端跑起來）"
 	@echo "lint     ruff + eslint"
 	@echo "fmt      自動修正與排版"
 	@echo "check    lint + test + 前端建置"
@@ -27,6 +28,11 @@ dev:
 
 test:
 	cd backend && uv run pytest
+	cd frontend && npm test
+
+# 第一次跑之前要先裝瀏覽器：cd frontend && npm run e2e:install
+e2e:
+	cd frontend && npm run e2e
 
 lint:
 	cd backend && uv run ruff check .
@@ -43,3 +49,4 @@ check:
 	$(MAKE) lint
 	$(MAKE) test
 	$(MAKE) build
+	$(MAKE) e2e
