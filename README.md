@@ -68,8 +68,15 @@ uv run smart-scaffold py --help
 
 `app` preset 生出來的東西：登入頁、側邊欄 + 頂欄的後台殼、深色模式、
 可重用的 `ProTable`（接後端統一的 `Page[T]` 分頁格式）、JWT + refresh token
-輪替、統一錯誤格式、軟刪除。資料庫預設 sqlite（開箱即跑），選 postgres 會
-附上 `docker-compose.yml`。
+輪替、統一錯誤格式、軟刪除，以及 12 個 Playwright 端對端測試——其中一條會走過
+每一頁並斷言 console 沒有任何 error 或 warning。
+
+容器化也備好了：前後端各一個 Dockerfile、nginx（SPA fallback + API 轉發）、
+`docker compose up -d --build` 一行起整套，容器啟動時自動套 migration。
+**容器版對外的埠跟本機開發的刻意錯開**，兩邊可以同時跑。
+
+資料庫預設 sqlite（開箱即跑），要換 PostgreSQL 就疊
+`docker-compose.postgres.yml`。
 
 ![app preset 生出來的樣子](docs/screenshots/app-preset-items.jpg)
 
@@ -117,8 +124,7 @@ uv run ruff check .   # lint
 
 - 只有終端機問答，沒有 TUI／GUI。問題定義與 renderer 已經分開，要加的時候只換
   `ask_all()` 的 `reader` / `writer`。
-- `app` preset 的前端用 `app.use(Antd)` 整包註冊 antd，沒有做 tree-shaking。
-  要瘦身的話換成 `unplugin-vue-components`，但記得 `message` / `notification`
-  這類命令式 API 還是要自己 import。
-- `app` preset 沒有 Dockerfile／部署設定，只有本機開發用的 `docker-compose.yml`
-  （而且只在選 postgres 時才需要）。
+- `app` preset 的容器設定是給**本機與內網**用的：沒有 TLS、沒有反向代理前面那一層、
+  密碼與金鑰都是開發用的預設值。要上正式環境得自己補。
+- 沒有 CI 設定檔。`make check` 就是完整的驗證流程，接到 CI 上只是把它抄過去，
+  但每家 CI 的寫法不同，沒有硬塞一份。

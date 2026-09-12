@@ -265,3 +265,150 @@ Vue 的插值 `{{ user.name }}` 跟佔位符 `{{var}}` 撞車，渲染器會把�
 變數而中止。改成「大括號裡不能有空白才算佔位符」，並補了兩個測試（`test_render.py`
 的 `test_大括號裡有空白的就不是佔位符`、`test_同一個檔案裡可以同時有佔位符與_vue_插值`）。
 py preset 重生一次確認沒被影響：15 個檔案、`pytest` 8 passed、`ruff` 零錯誤。
+
+---
+
+## 2026-09-12　第三輪：按需匯入、端對端測試、容器化
+
+### 1. smart-scaffold 自己
+
+```
+$ uv run pytest -q          → 93 passed
+$ uv run ruff check .       → All checks passed!
+```
+
+### 2. antd 按需匯入：打包量的前後對照
+
+同一個專案，只改匯入方式：
+
+| | 最大的 chunk | gzip |
+|---|---|---|
+| 之前（`app.use(Antd)`） | 1,591.71 kB | 498.68 kB |
+| 之後（`unplugin-vue-components`） | 303.88 kB | 109.31 kB |
+
+而且輸出從「一個大 chunk」變成照路由切開的十幾個小 chunk。
+
+改完之後 `vue-tsc` 立刻報出一個原本看不到的錯：
+
+```
+src/components/ProTable.vue(35,8): error TS2740:
+  Type '{ value: T[]; }' is missing the following properties from type 'any[]'
+```
+
+整包註冊時 `a-table` 沒有真正的型別，所以 `rows` 那個錯誤的斷言一直沒被發現。
+改成 `ref([]) as Ref<T[]>` 之後 type-check 通過。
+
+### 3. 端對端測試：12 個案例，實際跑過
+
+```
+$ npm run e2e
+  ✓ 登入 › 未登入時會被導向登入頁，並記住原本要去的地方
+  ✓ 登入 › 密碼錯誤會顯示錯誤訊息而且留在登入頁
+  ✓ 登入 › 登入成功之後回到原本要去的頁面
+  ✓ 登入 › 登出之後回到登入頁，而且不能再直接進去
+  ✓ 資料列表 › 列表顯示種好的範例資料
+  ✓ 資料列表 › 搜尋會縮小結果，重置會還原
+  ✓ 資料列表 › 新增、編輯、刪除走完一圈
+  ✓ 資料列表 › 代號重複會顯示後端回的錯誤訊息
+  ✓ 後台外殼 › 走過每一頁，console 不可以有任何 error 或 warning
+  ✓ 後台外殼 › 側邊欄可以在頁面之間切換
+  ✓ 後台外殼 › 深色模式切換之後會記住
+  ✓ 後台外殼 › 不存在的網址顯示 404，而且外殼還在
+  12 passed (15.5s)
+```
+
+第一次跑時 1 個失敗——是測試 helper 的 race：`page.goto()` 在初次載入就 resolve，
+**SPA 的路由守衛還沒把網址換掉**，這時候判斷 `page.url()` 會得到舊值。
+helper 改成先 `waitForURL(/\/login/)` 再填表單。
+
+### 4. 容器化：sqlite 版
+
+```
+$ docker compose up -d --build
+$ docker compose ps
+SERVICE   STATUS                    PORTS
+api       Up 8 seconds (healthy)    0.0.0.0:8003->8000/tcp
+web       Up 3 seconds (healthy)    0.0.0.0:5175->80/tcp
+
+$ docker compose logs api
+→ 套用資料庫 migration
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001, 建立初始資料表…
+→ 建立初始資料（SEED_ON_START=1）
+已建立管理員 admin@example.com
+INFO:     Application startup complete.
+```
+
+打過的端點：
+
+```
+直接打 api（8003）：
+  GET /api/v1/health      → 200 {"status":"ok"}
+  GET /api/v1/health/db   → 200 {"status":"ok","database":"ok"}
+經 nginx 轉發（5175）：
+  GET /api/v1/health      → 200
+  POST /api/v1/auth/login → 200（拿得到 token）
+SPA fallback：
+  GET /items              → 200，回的是 <title>示範管理系統</title> 的 index.html
+```
+
+瀏覽器實際開 `http://localhost:5175/items`（**正式建置版，不是 dev server**）：
+被導向登入頁 → 登入 → 正確回到 `/items` → 列表顯示 3 筆。切到 `/users` 也正常。
+console 沒有任何訊息。
+
+埠對照：本機開發 8002 / 5174，容器版 8003 / 5175——兩邊同時跑不會撞。
+
+### 5. 容器化：PostgreSQL 版
+
+```
+$ export COMPOSE_FILE=docker-compose.yml:docker-compose.postgres.yml
+$ docker compose up -d --build
+SERVICE   STATUS                    PORTS
+api       Up 17 seconds (healthy)   0.0.0.0:8003->8000/tcp
+db        Up 23 seconds (healthy)   0.0.0.0:5434->5432/tcp
+web       Up 12 seconds (healthy)   0.0.0.0:5175->80/tcp
+
+$ docker compose logs api
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001, 建立初始資料表…
+
+$ docker compose exec db psql -U app_pg_app -d pg_app -c "\dt"
+ public | alembic_version | table | app_pg_app
+ public | items           | table | app_pg_app
+ public | refresh_tokens  | table | app_pg_app
+ public | users           | table | app_pg_app
+
+$ docker compose exec db psql -U app_pg_app -d pg_app -tAc "select version_num from alembic_version;"
+0001
+
+經 nginx：GET /api/v1/health/db → 200 {"status":"ok","database":"ok"}
+          POST /auth/login（正確）→ 200、（密碼錯）→ 401
+全部容器的 log 掃過 traceback/exception：無。
+```
+
+驗完用 `docker compose down` 停掉，並逐一指名刪掉這次測試建立的三個 volume
+（`pg_app_db-data`、`pg_app_api-data`、`demo_app_api-data`），沒有用 `down -v`
+掃整批。
+
+### 6. 這一輪抓到的真問題
+
+**PostgreSQL 不准角色名以 `pg_` 開頭。** 用 `--name pg_app` 測試時 db 容器
+不斷重啟，log 裡是 `initdb: error: superuser name "pg_app" is disallowed`。
+這種錯誤埋在容器 log 裡，不實際跑一次根本看不到。資料庫帳號現在會自動避開這個
+前綴。
+
+**選 sqlite 時不會問資料庫埠，疊加檔卻拿到寫死的 5432**——而這台機器上 5432
+早就被別的服務佔用。現在沒問也照樣配一個沒被佔用的。
+
+**e2e 測試把專案顯示名稱寫死成「示範管理系統」。** 那是我開發模板時用的名字；
+換個 `--title` 生出來的專案，整組 e2e 第一條就紅。這個問題是**刻意用另一個名字
+（`--title "回歸驗證系統"`）做回歸驗證**才現形的——一直用同一個名字測永遠看不到。
+
+### 7. 兩個 preset 的完整回歸
+
+```
+py：  15 個檔案 → uv sync → 8 passed → ruff 零錯誤 → commit「建立 reg_py 專案骨架」
+app： 94 個檔案 → 後端 uv sync + 前端 npm install → git init → commit
+      backend:  20 passed / ruff 零錯誤
+      frontend: eslint 過 / vue-tsc 過 / vitest 6 passed / build 過 / e2e 12 passed
+      git status --porcelain 空的，node_modules、.venv、.env 都沒混進版控
+```

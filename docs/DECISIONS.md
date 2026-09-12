@@ -131,3 +131,61 @@ schemas / services` 分層、統一分頁 `Page[T]`、統一錯誤註冊、refre
 Vite 預設綁 `localhost`，在這台機器上解析成 `::1`，`curl 127.0.0.1:5174` 直接不通。
 文件與 `Makefile` 一律寫 `http://localhost:<port>`，跟 Vite 自己印出來的一致。
 後端則維持 `127.0.0.1`（uvicorn 綁的就是它）。
+
+---
+
+## 2026-09-12　第三輪：按需匯入、端對端測試、容器化
+
+### antd 改成按需匯入
+
+換掉 `app.use(Antd)`，用 `unplugin-vue-components` + `AntDesignVueResolver`
+（`importStyle: false`，樣式仍然統一由 `reset.css` 負責）。最大的 chunk 從
+1,591.71 kB（gzip 498.68）降到 303.88 kB（gzip 109.31），而且照路由切開。
+
+**代價**：命令式 API（`message`、`notification`、`Modal.confirm`）不會被自動
+匯入，忘了 import 只有執行到那一行才會炸。這件事寫在 `vite.config.ts` 的註解裡
+——那是最可能被翻到的地方。
+
+意外收穫：整包註冊時 `a-table` 沒有真正的型別，`ProTable` 裡一個錯誤的斷言
+（`ref<T[]>([]) as { value: T[] }`）一直沒被照出來，改成按需匯入之後 `vue-tsc`
+立刻指出來。
+
+### e2e 放在 frontend/ 而不是獨立的 package
+
+Playwright 直接掛在前端那包 npm 專案底下，共用同一份 `node_modules` 與 eslint
+設定。**代價**是 vitest 跟 playwright 的檔名慣例會撞（兩邊都認 `*.spec.ts`），
+所以 vitest 的 `include` 明確限縮成 `src/**/*.spec.ts`。
+
+e2e 用自己的資料庫檔並且每次重建。跟開發資料共用的話，「昨天過今天不過」的假
+失敗遲早會出現，而那種問題最花時間。
+
+### e2e 一定要有一條「console 不可以有 error 或 warning」
+
+第二輪漏掉 `app.use(Antd)`，lint、type-check、單元測試、build 四道關卡全綠卻
+沒人抓到，只有開瀏覽器才看得見。現在那個情境有測試守著。這條測試的價值不在於
+它測了什麼功能，而在於它**擋住一整類「檢查全過但畫面是壞的」的問題**。
+
+### PostgreSQL 用疊加檔，不用 compose profile
+
+`profiles` 碰到 `depends_on` 會被自動啟用——選 sqlite 的人也會被迫跑一個用不到
+的 postgres。疊加檔（`docker compose -f a.yml -f b.yml`）沒有這個問題，而且設一次
+`COMPOSE_FILE` 之後所有指令都會自動吃到。**代價**是選 postgres 的人如果只跑
+`docker compose up`，api 會連不到 db；失敗訊息很清楚，而且 README 有寫。
+
+### 容器版的埠跟本機開發刻意錯開
+
+`make api` / `make web` 跟 `docker compose up` 要能同時跑——同機開多個專案時，
+埠撞在一起是最常見的卡點，而這支工具存在的理由之一就是解決這件事。埠在生成時
+一次配好（只查一次 docker），不另外問使用者。
+
+### 資料庫帳號從專案名算出來，不直接用專案名
+
+PostgreSQL **不准角色名以 `pg_` 開頭**。專案叫 `pg_app` 時直接拿來當帳號會讓
+`initdb` 失敗，而錯誤訊息埋在 db 容器的 log 裡，很難聯想到是專案名害的。
+現在遇到這個前綴會自動加上 `app_`。
+
+### 容器啟動時自動套 migration
+
+entrypoint 先跑 `alembic upgrade head` 再起服務，失敗就直接退出。**代價**是多個
+副本同時啟動時會搶著跑 migration（alembic 有鎖，最多是慢一點）。帶著錯誤的
+schema 跑起來比不起來更難查，所以選擇讓它失敗得早一點。
