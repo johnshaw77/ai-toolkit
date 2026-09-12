@@ -7,6 +7,7 @@ import subprocess
 import pytest
 
 from smart_scaffold.postactions import (
+    InstallStep,
     check_clean_for_commit,
     commit_message_for,
     first_commit,
@@ -39,7 +40,8 @@ def _project(tmp_path):
 
 
 def test_裝依賴失敗不中止只回報(tmp_path):
-    result = install_dependencies(_project(tmp_path), uv_cmd=NO_SUCH_COMMAND)
+    steps = (InstallStep("Python 依賴", (NO_SUCH_COMMAND, "sync")),)
+    result = install_dependencies(_project(tmp_path), steps, writer=lambda _line: None)
     assert result.ok is False
     assert "依賴沒裝成功" in result.message
 
@@ -136,7 +138,47 @@ def test_裝依賴失敗時總結裡會明講(tmp_path):
         install=True,
         use_git=False,
         writer=lambda _line: None,
-        uv_cmd=NO_SUCH_COMMAND,
+        install_steps=(InstallStep("Python 依賴", (NO_SUCH_COMMAND, "sync")),),
     )
     assert report.install.ok is False
-    assert any("uv sync" in w for w in report.warnings)
+    assert any(NO_SUCH_COMMAND in w for w in report.warnings)
+
+
+def test_多包依賴分別安裝而且各自回報(tmp_path):
+    """全端專案有前後端兩包依賴，一包壞掉不能拖垮另一包。"""
+    project = _project(tmp_path)
+    (project / "backend").mkdir()
+    (project / "frontend").mkdir()
+    lines: list[str] = []
+    result = install_dependencies(
+        project,
+        (
+            InstallStep("後端依賴", ("true",), "backend"),
+            InstallStep("前端依賴", (NO_SUCH_COMMAND, "install"), "frontend"),
+        ),
+        writer=lines.append,
+    )
+    assert result.ok is False
+    assert "前端依賴" in result.message
+    assert any("✓ 後端依賴已安裝" in line for line in lines)
+
+
+def test_安裝步驟的資料夾不存在時只回報不炸(tmp_path):
+    result = install_dependencies(
+        _project(tmp_path),
+        (InstallStep("前端依賴", ("npm", "install"), "frontend"),),
+        writer=lambda _line: None,
+    )
+    assert result.ok is False
+    assert "找不到 frontend/" in result.message
+
+
+def test_下一步會照_preset_給的指令印(tmp_path):
+    text = next_steps(
+        tmp_path / "demo",
+        install_ok=False,
+        install_steps=(InstallStep("前端依賴", ("npm", "install"), "frontend"),),
+        verify_commands=("npm run build",),
+    )
+    assert "cd frontend && npm install" in text
+    assert "npm run build" in text

@@ -13,6 +13,11 @@ from pathlib import Path
 from typing import Any
 
 from .ports import NoFreePortError, suggest_free_port
+from .postactions import (
+    DEFAULT_INSTALL_STEPS,
+    DEFAULT_VERIFY_COMMANDS,
+    InstallStep,
+)
 from .questions import Question
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
@@ -86,7 +91,8 @@ def default_port(_answers: dict[str, Any]) -> int:
         return FALLBACK_PORT
 
 
-COMMON_QUESTIONS: tuple[Question, ...] = (
+#: 每個 preset 都要問的身分題，排在最前面。
+IDENTITY_QUESTIONS: tuple[Question, ...] = (
     Question(
         key="name",
         prompt="專案名稱（同時是 Python 套件名）",
@@ -107,13 +113,37 @@ COMMON_QUESTIONS: tuple[Question, ...] = (
         default="~/Desktop/@SideProjects/{name}",
         validate=_check_path,
     ),
+)
+
+#: Python 版本，凡是有 Python 的 preset 都要問。
+PYTHON_QUESTION = Question(
+    key="python_version",
+    prompt="Python 版本",
+    type="choice",
+    choices=("3.12", "3.13"),
+    default="3.12",
+)
+
+#: 後置動作也是問題，這樣「新增一題只改一處」才沒有例外。
+POST_ACTION_QUESTIONS: tuple[Question, ...] = (
     Question(
-        key="python_version",
-        prompt="Python 版本",
-        type="choice",
-        choices=("3.12", "3.13"),
-        default="3.12",
+        key="install",
+        prompt="生完之後要幫你裝依賴嗎",
+        type="bool",
+        default=True,
     ),
+    Question(
+        key="git",
+        prompt="要 git init 並產生第一顆 commit 嗎",
+        type="bool",
+        default=True,
+    ),
+)
+
+#: py preset：一個服務埠就夠了，而且可以不要。
+PY_QUESTIONS: tuple[Question, ...] = (
+    *IDENTITY_QUESTIONS,
+    PYTHON_QUESTION,
     Question(
         key="service",
         prompt="要在 config/settings.yaml 裡保留服務埠設定嗎",
@@ -128,18 +158,7 @@ COMMON_QUESTIONS: tuple[Question, ...] = (
         validate=_check_port,
         when=lambda answers: bool(answers.get("service")),
     ),
-    Question(
-        key="install",
-        prompt="生完之後要幫你跑 uv sync 裝依賴嗎",
-        type="bool",
-        default=True,
-    ),
-    Question(
-        key="git",
-        prompt="要 git init 並產生第一顆 commit 嗎",
-        type="bool",
-        default=True,
-    ),
+    *POST_ACTION_QUESTIONS,
 )
 
 
@@ -150,6 +169,10 @@ class Preset:
     key: str
     summary: str
     questions: tuple[Question, ...]
+    #: 生成完要跑哪幾包依賴安裝；全端專案前後端各一包。
+    install_steps: tuple[InstallStep, ...] = DEFAULT_INSTALL_STEPS
+    #: 最後印出來的驗證指令。
+    verify_commands: tuple[str, ...] = DEFAULT_VERIFY_COMMANDS
     ready: bool = True
 
     @property
@@ -161,12 +184,12 @@ PRESETS: dict[str, Preset] = {
     "py": Preset(
         key="py",
         summary="Python 專案：uv + src/ 套件分層 + scripts/ + config/",
-        questions=COMMON_QUESTIONS,
+        questions=PY_QUESTIONS,
     ),
     "app": Preset(
         key="app",
         summary="全端專案：FastAPI + Vue3 + antd（模板內容下一輪才做）",
-        questions=COMMON_QUESTIONS,
+        questions=PY_QUESTIONS,
         ready=False,
     ),
 }

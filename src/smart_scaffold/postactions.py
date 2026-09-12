@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -63,13 +63,51 @@ def _run(
     return completed.returncode, output.strip()
 
 
-def install_dependencies(project_dir: Path, *, uv_cmd: str = "uv") -> StepResult:
-    """在生成出來的專案裡跑 ``uv sync --extra dev``。失敗不中止。"""
-    code, output = _run([uv_cmd, "sync", "--extra", "dev"], project_dir, INSTALL_TIMEOUT)
-    if code == 0:
-        return StepResult(True, "依賴已安裝（uv sync --extra dev）")
-    tail = output.splitlines()[-1] if output else "沒有輸出"
-    return StepResult(False, f"依賴沒裝成功：{tail}")
+@dataclass(frozen=True)
+class InstallStep:
+    """一個安裝步驟。全端專案有前後端兩包依賴，所以這是清單不是單一指令。"""
+
+    label: str
+    args: tuple[str, ...]
+    subdir: str = "."
+
+    def command(self) -> str:
+        """給人看的指令字串，失敗時要叫使用者自己跑的就是這個。"""
+        return " ".join(self.args)
+
+
+#: 沒有特別指定時就是單純的 uv 專案。
+DEFAULT_INSTALL_STEPS: tuple[InstallStep, ...] = (
+    InstallStep("Python 依賴", ("uv", "sync", "--extra", "dev")),
+)
+
+
+def install_dependencies(
+    project_dir: Path,
+    steps: Sequence[InstallStep] | None = None,
+    *,
+    writer: Callable[[str], None] = print,
+) -> StepResult:
+    """依序跑完每個安裝步驟。**任何一步失敗都不中止**，只回報。"""
+    steps = DEFAULT_INSTALL_STEPS if steps is None else tuple(steps)
+    failures: list[str] = []
+    for step in steps:
+        workdir = project_dir / step.subdir
+        if not workdir.is_dir():
+            failures.append(f"{step.label}：找不到 {step.subdir}/")
+            continue
+        writer(f"→ 安裝{step.label}中（{step.command()}）…")
+        code, output = _run(list(step.args), workdir, INSTALL_TIMEOUT)
+        if code == 0:
+            writer(f"✓ {step.label}已安裝")
+            continue
+        tail = output.splitlines()[-1] if output else "沒有輸出"
+        failures.append(f"{step.label}：{tail}")
+        writer(f"! {step.label}沒裝成功：{tail}")
+
+    if not failures:
+        return StepResult(True, "依賴已安裝")
+    return StepResult(False, "依賴沒裝成功——" + "；".join(failures))
 
 
 def init_git(project_dir: Path, *, git_cmd: str = "git") -> StepResult:
@@ -180,7 +218,17 @@ def _has_git_identity(project_dir: Path, git_cmd: str) -> bool:
     return True
 
 
-def next_steps(project_dir: Path, *, install_ok: bool) -> str:
+#: 沒特別指定時，印出來的驗證指令。
+DEFAULT_VERIFY_COMMANDS: tuple[str, ...] = ("uv run pytest", "uv run ruff check .")
+
+
+def next_steps(
+    project_dir: Path,
+    *,
+    install_ok: bool,
+    install_steps: Sequence[InstallStep] | None = None,
+    verify_commands: Sequence[str] = DEFAULT_VERIFY_COMMANDS,
+) -> str:
     """印在最後的下一步，必須是可以直接複製貼上的指令。"""
     lines = [
         "下一步：",
@@ -188,10 +236,11 @@ def next_steps(project_dir: Path, *, install_ok: bool) -> str:
         f"  cd {project_dir}",
     ]
     if not install_ok:
-        lines.append("  uv sync --extra dev        # 剛才沒裝成功，請自己跑一次")
+        for step in install_steps or DEFAULT_INSTALL_STEPS:
+            prefix = "" if step.subdir == "." else f"cd {step.subdir} && "
+            lines.append(f"  {prefix}{step.command()}        # 剛才沒裝成功，請自己跑一次")
+    lines += [f"  {command}" for command in verify_commands]
     lines += [
-        "  uv run pytest",
-        "  uv run ruff check .",
         "",
         "接著在那個資料夾裡開一個 Claude Code session：",
         "",
@@ -208,18 +257,17 @@ def run_post_actions(
     name: str,
     description: str = "",
     install: bool = True,
+    install_steps: Sequence[InstallStep] | None = None,
     use_git: bool = True,
     writer: Callable[[str], None] = print,
-    uv_cmd: str = "uv",
     git_cmd: str = "git",
 ) -> PostActionReport:
     """依序跑完後置動作，並把過程印出來。"""
     if install:
-        writer("→ 安裝依賴中（uv sync --extra dev）…")
-        install_result = install_dependencies(project_dir, uv_cmd=uv_cmd)
+        install_result = install_dependencies(project_dir, install_steps, writer=writer)
     else:
         install_result = StepResult(True, "依 --no-install 跳過安裝依賴", skipped=True)
-    writer(("✓ " if install_result.ok else "! ") + install_result.message)
+        writer("✓ " + install_result.message)
 
     if use_git:
         git_result = init_git(project_dir, git_cmd=git_cmd)
@@ -239,7 +287,11 @@ def run_post_actions(
 
     report = PostActionReport(install=install_result, git=git_result)
     if not install_result.ok:
-        report.warnings.append("依賴沒裝成功，請自己在專案資料夾裡跑 `uv sync --extra dev`")
+        commands = "、".join(
+            f"`{step.command()}`（在 {step.subdir}/）"
+            for step in (install_steps or DEFAULT_INSTALL_STEPS)
+        )
+        report.warnings.append(f"依賴沒裝成功，請自己跑：{commands}")
     if not git_result.ok:
         report.warnings.append("git 步驟沒完成，請自己 `git init -b main` 並 commit")
     return report

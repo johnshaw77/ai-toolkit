@@ -150,6 +150,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         name=str(answers["name"]),
         description=str(answers.get("description") or ""),
         install=bool(answers.get("install", True)),
+        install_steps=preset.install_steps,
         use_git=bool(answers.get("git", True)),
     )
 
@@ -158,7 +159,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"! {warning}")
     if report.warnings:
         print()
-    print(next_steps(target, install_ok=report.install.ok))
+    print(
+        next_steps(
+            target,
+            install_ok=report.install.ok,
+            install_steps=preset.install_steps,
+            verify_commands=preset.verify_commands,
+        )
+    )
     return 0
 
 
