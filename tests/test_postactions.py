@@ -160,7 +160,7 @@ def test_多包依賴分別安裝而且各自回報(tmp_path):
     )
     assert result.ok is False
     assert "前端依賴" in result.message
-    assert any("✓ 後端依賴已安裝" in line for line in lines)
+    assert any("✓ 後端依賴 已安裝" in line for line in lines)
 
 
 def test_安裝步驟的資料夾不存在時只回報不炸(tmp_path):

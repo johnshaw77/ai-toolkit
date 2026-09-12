@@ -34,6 +34,10 @@ MAX_DESCRIPTION_WIDTH = 60
 FALLBACK_PORT = 8000
 PORT_SEARCH_START = 8000
 
+#: 前端 dev server 從這裡往後找（Vite 的慣例埠）。
+FRONTEND_PORT_SEARCH_START = 5173
+FALLBACK_FRONTEND_PORT = 5173
+
 
 def display_width(text: str) -> int:
     """字串在終端機（與 ruff 眼裡）的寬度：全形字算兩格。"""
@@ -76,6 +80,16 @@ def _check_path(value: Any, _answers: dict[str, Any]) -> str | None:
     return None
 
 
+def _check_title(value: Any, _answers: dict[str, Any]) -> str | None:
+    text = str(value).strip()
+    if not text:
+        return "顯示名稱不能空白"
+    width = display_width(text)
+    if width > MAX_DESCRIPTION_WIDTH:
+        return f"太長了（中文字算兩格，目前 {width} 格，上限 {MAX_DESCRIPTION_WIDTH}）"
+    return None
+
+
 def _check_port(value: Any, _answers: dict[str, Any]) -> str | None:
     port = int(value)
     if not 1 <= port <= 65535:
@@ -83,12 +97,26 @@ def _check_port(value: Any, _answers: dict[str, Any]) -> str | None:
     return None
 
 
-def default_port(_answers: dict[str, Any]) -> int:
-    """給一個現在沒被佔用的埠；真的找不到就退回固定值，不讓工具中斷。"""
+def _free_port(start: int, fallback: int) -> int:
+    """找一個沒被佔用的埠；真的找不到就退回固定值，不讓工具中斷。"""
     try:
-        return suggest_free_port(PORT_SEARCH_START)
+        return suggest_free_port(start)
     except (NoFreePortError, OSError):
-        return FALLBACK_PORT
+        return fallback
+
+
+def default_port(_answers: dict[str, Any]) -> int:
+    """後端／單一服務的預設埠。"""
+    return _free_port(PORT_SEARCH_START, FALLBACK_PORT)
+
+
+def default_frontend_port(answers: dict[str, Any]) -> int:
+    """前端 dev server 的預設埠，不能跟後端撞在一起。"""
+    port = _free_port(FRONTEND_PORT_SEARCH_START, FALLBACK_FRONTEND_PORT)
+    backend = answers.get("backend_port")
+    if backend is not None and int(backend) == port:
+        port = _free_port(port + 1, FALLBACK_FRONTEND_PORT + 1)
+    return port
 
 
 #: 每個 preset 都要問的身分題，排在最前面。
@@ -180,6 +208,54 @@ class Preset:
         return TEMPLATES_DIR / self.key
 
 
+#: app preset：前後端各一個埠，另外要問資料庫與顯示用的中文名稱。
+APP_QUESTIONS: tuple[Question, ...] = (
+    *IDENTITY_QUESTIONS,
+    Question(
+        key="title",
+        prompt="介面上顯示的名稱（會出現在瀏覽器標題與側邊欄）",
+        type="str",
+        default="{description}",
+        validate=_check_title,
+    ),
+    PYTHON_QUESTION,
+    Question(
+        key="backend_port",
+        prompt="後端 API 的埠",
+        type="int",
+        default=default_port,
+        validate=_check_port,
+    ),
+    Question(
+        key="frontend_port",
+        prompt="前端 dev server 的埠",
+        type="int",
+        default=default_frontend_port,
+        validate=_check_port,
+    ),
+    Question(
+        key="database",
+        prompt="資料庫",
+        type="choice",
+        choices=("sqlite", "postgres"),
+        default="sqlite",
+    ),
+    *POST_ACTION_QUESTIONS,
+)
+
+#: app preset 有兩包依賴要裝。
+APP_INSTALL_STEPS: tuple[InstallStep, ...] = (
+    InstallStep("後端依賴", ("uv", "sync", "--extra", "dev"), "backend"),
+    InstallStep("前端依賴", ("npm", "install"), "frontend"),
+)
+
+APP_VERIFY_COMMANDS: tuple[str, ...] = (
+    "cd backend && uv run pytest",
+    "cd backend && uv run ruff check .",
+    "cd frontend && npm run build",
+)
+
+
 PRESETS: dict[str, Preset] = {
     "py": Preset(
         key="py",
@@ -188,9 +264,10 @@ PRESETS: dict[str, Preset] = {
     ),
     "app": Preset(
         key="app",
-        summary="全端專案：FastAPI + Vue3 + antd（模板內容下一輪才做）",
-        questions=PY_QUESTIONS,
-        ready=False,
+        summary="全端專案：FastAPI + SQLAlchemy 2.0 + Vue3 + Ant Design Vue",
+        questions=APP_QUESTIONS,
+        install_steps=APP_INSTALL_STEPS,
+        verify_commands=APP_VERIFY_COMMANDS,
     ),
 }
 
@@ -203,6 +280,16 @@ def get_preset(key: str) -> Preset:
         raise KeyError(f"沒有這個 preset：{key}（可用：{known}）") from None
 
 
+def database_url_for(database: str, name: str) -> str:
+    """把資料庫選擇翻成連線字串。
+
+    sqlite 是預設，因為新專案開箱就要能跑，不該先逼人裝 PostgreSQL。
+    """
+    if database == "postgres":
+        return f"postgresql+asyncpg://{name}:{name}_dev_pw@127.0.0.1:5432/{name}"
+    return f"sqlite+aiosqlite:///./{name}.db"
+
+
 def build_variables(answers: dict[str, Any]) -> dict[str, Any]:
     """把答案轉成模板變數。
 
@@ -210,9 +297,16 @@ def build_variables(answers: dict[str, Any]) -> dict[str, Any]:
     但模板還是需要一個值，缺的在這裡補。
     """
     name = str(answers["name"])
+    description = str(answers.get("description") or f"{name} 專案")
+    database = str(answers.get("database") or "sqlite")
     return {
         "name": name,
-        "description": str(answers.get("description") or f"{name} 專案"),
+        "description": description,
+        "title": str(answers.get("title") or description),
         "python_version": str(answers.get("python_version") or "3.12"),
         "port": int(answers.get("port") or FALLBACK_PORT),
+        "backend_port": int(answers.get("backend_port") or FALLBACK_PORT),
+        "frontend_port": int(answers.get("frontend_port") or FALLBACK_FRONTEND_PORT),
+        "database": database,
+        "database_url": database_url_for(database, name),
     }

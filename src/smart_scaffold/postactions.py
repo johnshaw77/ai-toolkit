@@ -96,14 +96,14 @@ def install_dependencies(
         if not workdir.is_dir():
             failures.append(f"{step.label}：找不到 {step.subdir}/")
             continue
-        writer(f"→ 安裝{step.label}中（{step.command()}）…")
+        writer(f"→ 安裝 {step.label}（{step.command()}）…")
         code, output = _run(list(step.args), workdir, INSTALL_TIMEOUT)
         if code == 0:
-            writer(f"✓ {step.label}已安裝")
+            writer(f"✓ {step.label} 已安裝")
             continue
         tail = output.splitlines()[-1] if output else "沒有輸出"
         failures.append(f"{step.label}：{tail}")
-        writer(f"! {step.label}沒裝成功：{tail}")
+        writer(f"! {step.label} 沒裝成功：{tail}")
 
     if not failures:
         return StepResult(True, "依賴已安裝")

@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+.vite/
+*.local
+
+# 環境（.env 有秘密，永遠不進版控；要分享請改 .env.example）
+.venv/
+.env
+
+# 資料庫檔（sqlite）
+*.db
+*.sqlite3
+
+# 編輯器與作業系統
+.DS_Store
+.idea/
+.vscode/
+
+# 建置產物
+build/

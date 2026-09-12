@@ -82,8 +82,14 @@ def test_沒給_preset_時印說明並回傳非零(capsys):
     assert "PRESET" in capsys.readouterr().out
 
 
-def test_還沒實作的_preset_會明確擋下來(capsys):
-    assert main(["app", "--name", "demo", "--yes"]) == 2
+def test_還沒實作的_preset_會明確擋下來(capsys, monkeypatch):
+    """ready=False 的 preset 要擋在生成之前，不能生出一個空專案。"""
+    import smart_scaffold.cli as cli_module
+
+    unfinished = Preset(key="py", summary="還沒做完", questions=PY_QUESTIONS, ready=False)
+    monkeypatch.setitem(cli_module.PRESETS, "py", unfinished)
+    monkeypatch.setattr(cli_module, "get_preset", lambda _key: unfinished)
+    assert main(["py", "--name", "demo", "--yes"]) == 2
     assert "還沒有內容" in capsys.readouterr().err
 
 
