@@ -1,0 +1,195 @@
+"""每個 preset 要問哪些題。
+
+**新增一題只改這個檔案。** CLI 旗標、``--help``、互動問答都是從這裡長出來的，
+在別的地方再寫一份清單就是 bug。
+"""
+
+from __future__ import annotations
+
+import re
+import unicodedata
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from .ports import NoFreePortError, suggest_free_port
+from .questions import Question
+
+TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+
+#: 專案名同時是 Python 套件名，所以限制得比資料夾名嚴格。
+_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+
+#: 名稱與描述都會被寫進模板的程式碼裡，太長會撞到 ruff 的 line-length 100。
+#: 描述用**顯示寬度**算——中日韓文字一個佔兩格，ruff 也是這樣量的。
+MAX_NAME_LENGTH = 40
+MAX_DESCRIPTION_WIDTH = 60
+
+#: 找不到空閒埠時退回這個，讓工具還是生得出專案。
+FALLBACK_PORT = 8000
+PORT_SEARCH_START = 8000
+
+
+def display_width(text: str) -> int:
+    """字串在終端機（與 ruff 眼裡）的寬度：全形字算兩格。"""
+    return sum(2 if unicodedata.east_asian_width(ch) in "WF" else 1 for ch in text)
+
+
+def _check_name(value: Any, _answers: dict[str, Any]) -> str | None:
+    text = str(value)
+    if not _NAME_RE.match(text):
+        return "只能用小寫英文、數字、底線，而且要以英文字母開頭（例：demo_tool）"
+    if len(text) > MAX_NAME_LENGTH:
+        return f"太長了，最多 {MAX_NAME_LENGTH} 個字（名稱會被寫進生成出來的程式碼裡）"
+    return None
+
+
+def _check_description(value: Any, _answers: dict[str, Any]) -> str | None:
+    text = str(value).strip()
+    if not text:
+        return "描述不能空白"
+    width = display_width(text)
+    if width > MAX_DESCRIPTION_WIDTH:
+        return (
+            f"太長了（中文字算兩格，目前 {width} 格，上限 {MAX_DESCRIPTION_WIDTH}）"
+            "——描述會被原樣寫進生成專案的程式碼裡"
+        )
+    if "\n" in text:
+        return "描述只能寫一行"
+    return None
+
+
+def _check_path(value: Any, _answers: dict[str, Any]) -> str | None:
+    text = str(value).strip()
+    if not text:
+        return "路徑不能空白"
+    target = Path(text).expanduser()
+    if target.is_file():
+        return f"{target} 是一個檔案，不能當專案資料夾"
+    if target.is_dir() and any(target.iterdir()):
+        return f"{target} 已經存在而且不是空的，換一個路徑"
+    return None
+
+
+def _check_port(value: Any, _answers: dict[str, Any]) -> str | None:
+    port = int(value)
+    if not 1 <= port <= 65535:
+        return "埠號要在 1 到 65535 之間"
+    return None
+
+
+def default_port(_answers: dict[str, Any]) -> int:
+    """給一個現在沒被佔用的埠；真的找不到就退回固定值，不讓工具中斷。"""
+    try:
+        return suggest_free_port(PORT_SEARCH_START)
+    except (NoFreePortError, OSError):
+        return FALLBACK_PORT
+
+
+COMMON_QUESTIONS: tuple[Question, ...] = (
+    Question(
+        key="name",
+        prompt="專案名稱（同時是 Python 套件名）",
+        type="str",
+        validate=_check_name,
+    ),
+    Question(
+        key="description",
+        prompt="一句話描述這個專案",
+        type="str",
+        default="{name} 專案",
+        validate=_check_description,
+    ),
+    Question(
+        key="path",
+        prompt="要建在哪裡",
+        type="str",
+        default="~/Desktop/@SideProjects/{name}",
+        validate=_check_path,
+    ),
+    Question(
+        key="python_version",
+        prompt="Python 版本",
+        type="choice",
+        choices=("3.12", "3.13"),
+        default="3.12",
+    ),
+    Question(
+        key="service",
+        prompt="要在 config/settings.yaml 裡保留服務埠設定嗎",
+        type="bool",
+        default=True,
+    ),
+    Question(
+        key="port",
+        prompt="服務埠",
+        type="int",
+        default=default_port,
+        validate=_check_port,
+        when=lambda answers: bool(answers.get("service")),
+    ),
+    Question(
+        key="install",
+        prompt="生完之後要幫你跑 uv sync 裝依賴嗎",
+        type="bool",
+        default=True,
+    ),
+    Question(
+        key="git",
+        prompt="要 git init 並產生第一顆 commit 嗎",
+        type="bool",
+        default=True,
+    ),
+)
+
+
+@dataclass(frozen=True)
+class Preset:
+    """一個可以生成的專案形態。"""
+
+    key: str
+    summary: str
+    questions: tuple[Question, ...]
+    ready: bool = True
+
+    @property
+    def template_dir(self) -> Path:
+        return TEMPLATES_DIR / self.key
+
+
+PRESETS: dict[str, Preset] = {
+    "py": Preset(
+        key="py",
+        summary="Python 專案：uv + src/ 套件分層 + scripts/ + config/",
+        questions=COMMON_QUESTIONS,
+    ),
+    "app": Preset(
+        key="app",
+        summary="全端專案：FastAPI + Vue3 + antd（模板內容下一輪才做）",
+        questions=COMMON_QUESTIONS,
+        ready=False,
+    ),
+}
+
+
+def get_preset(key: str) -> Preset:
+    try:
+        return PRESETS[key]
+    except KeyError:
+        known = "、".join(sorted(PRESETS))
+        raise KeyError(f"沒有這個 preset：{key}（可用：{known}）") from None
+
+
+def build_variables(answers: dict[str, Any]) -> dict[str, Any]:
+    """把答案轉成模板變數。
+
+    答案字典跟模板變數**不是同一件事**：``when`` 為假的題目不會出現在答案裡，
+    但模板還是需要一個值，缺的在這裡補。
+    """
+    name = str(answers["name"])
+    return {
+        "name": name,
+        "description": str(answers.get("description") or f"{name} 專案"),
+        "python_version": str(answers.get("python_version") or "3.12"),
+        "port": int(answers.get("port") or FALLBACK_PORT),
+    }
