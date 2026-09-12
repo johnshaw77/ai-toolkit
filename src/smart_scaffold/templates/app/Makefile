@@ -5,7 +5,7 @@ help:
 	@echo "install  裝前後端依賴"
 	@echo "dev      同時跑後端與前端（需要兩個終端機時請分別跑 api / web）"
 	@echo "api      只跑後端（http://127.0.0.1:{{backend_port}}）"
-	@echo "web      只跑前端（http://127.0.0.1:{{frontend_port}}）"
+	@echo "web      只跑前端（http://localhost:{{frontend_port}}）"
 	@echo "test     跑後端測試"
 	@echo "lint     ruff + eslint"
 	@echo "fmt      自動修正與排版"
@@ -17,7 +17,7 @@ install:
 	cd frontend && npm install
 
 api:
-	cd backend && uv run uvicorn {{name}}_api.main:app --reload --port {{backend_port}}
+	cd backend && uv run uvicorn app.main:app --reload --port {{backend_port}}
 
 web:
 	cd frontend && npm run dev

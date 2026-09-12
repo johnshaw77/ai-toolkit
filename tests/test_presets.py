@@ -70,3 +70,25 @@ def test_名稱與描述有長度上限():
     assert questions["description"].validate("描" * 30, {}) is None
     assert questions["description"].validate("d" * 60, {}) is None
     assert questions["description"].validate("   ", {}) is not None
+
+
+def test_選_sqlite_就不問資料庫埠():
+    """只有 postgres 才需要對外開埠，sqlite 問這題是在浪費使用者的時間。"""
+    from smart_scaffold.questions import ask_all
+
+    answers = ask_all(
+        PRESETS["app"].questions,
+        {"name": "demo", "database": "sqlite"},
+        interactive=False,
+        writer=lambda _line: None,
+    )
+    assert "db_port" not in answers
+
+    answers = ask_all(
+        PRESETS["app"].questions,
+        {"name": "demo", "database": "postgres", "db_port": 5439},
+        interactive=False,
+        writer=lambda _line: None,
+    )
+    assert answers["db_port"] == 5439
+    assert ":5439/" in build_variables(answers)["database_url"]

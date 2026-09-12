@@ -38,6 +38,10 @@ PORT_SEARCH_START = 8000
 FRONTEND_PORT_SEARCH_START = 5173
 FALLBACK_FRONTEND_PORT = 5173
 
+#: PostgreSQL 對外的主機埠。同機跑多個專案時一定會撞，所以也要找空的。
+DB_PORT_SEARCH_START = 5432
+FALLBACK_DB_PORT = 5432
+
 
 def display_width(text: str) -> int:
     """字串在終端機（與 ruff 眼裡）的寬度：全形字算兩格。"""
@@ -108,6 +112,11 @@ def _free_port(start: int, fallback: int) -> int:
 def default_port(_answers: dict[str, Any]) -> int:
     """後端／單一服務的預設埠。"""
     return _free_port(PORT_SEARCH_START, FALLBACK_PORT)
+
+
+def default_db_port(_answers: dict[str, Any]) -> int:
+    """PostgreSQL 的主機埠。"""
+    return _free_port(DB_PORT_SEARCH_START, FALLBACK_DB_PORT)
 
 
 def default_frontend_port(answers: dict[str, Any]) -> int:
@@ -240,6 +249,15 @@ APP_QUESTIONS: tuple[Question, ...] = (
         choices=("sqlite", "postgres"),
         default="sqlite",
     ),
+    Question(
+        key="db_port",
+        prompt="PostgreSQL 對外的主機埠",
+        type="int",
+        default=default_db_port,
+        validate=_check_port,
+        # 用 sqlite 就沒有這個問題，不要拿沒用的題目煩人。
+        when=lambda answers: answers.get("database") == "postgres",
+    ),
     *POST_ACTION_QUESTIONS,
 )
 
@@ -280,13 +298,13 @@ def get_preset(key: str) -> Preset:
         raise KeyError(f"沒有這個 preset：{key}（可用：{known}）") from None
 
 
-def database_url_for(database: str, name: str) -> str:
+def database_url_for(database: str, name: str, *, port: int = FALLBACK_DB_PORT) -> str:
     """把資料庫選擇翻成連線字串。
 
     sqlite 是預設，因為新專案開箱就要能跑，不該先逼人裝 PostgreSQL。
     """
     if database == "postgres":
-        return f"postgresql+asyncpg://{name}:{name}_dev_pw@127.0.0.1:5432/{name}"
+        return f"postgresql+asyncpg://{name}:{name}_dev_pw@127.0.0.1:{port}/{name}"
     return f"sqlite+aiosqlite:///./{name}.db"
 
 
@@ -299,6 +317,7 @@ def build_variables(answers: dict[str, Any]) -> dict[str, Any]:
     name = str(answers["name"])
     description = str(answers.get("description") or f"{name} 專案")
     database = str(answers.get("database") or "sqlite")
+    db_port = int(answers.get("db_port") or FALLBACK_DB_PORT)
     return {
         "name": name,
         "description": description,
@@ -308,5 +327,6 @@ def build_variables(answers: dict[str, Any]) -> dict[str, Any]:
         "backend_port": int(answers.get("backend_port") or FALLBACK_PORT),
         "frontend_port": int(answers.get("frontend_port") or FALLBACK_FRONTEND_PORT),
         "database": database,
-        "database_url": database_url_for(database, name),
+        "db_port": db_port,
+        "database_url": database_url_for(database, name, port=db_port),
     }

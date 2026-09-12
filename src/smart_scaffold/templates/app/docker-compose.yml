@@ -1,0 +1,36 @@
+# 只有選 PostgreSQL 時才需要這個檔案。
+# 預設的 DATABASE_URL 是 sqlite，不跑這裡的服務也能開發。
+#
+#   docker compose up -d db      # 起資料庫
+#   docker compose ps            # 確認是 running/healthy
+#   docker compose logs -f db    # 看 log
+#
+# 起來之後把 backend/.env 的 DATABASE_URL 改成：
+#   postgresql+asyncpg://{{name}}:{{name}}_dev_pw@127.0.0.1:{{db_port}}/{{name}}
+# 再跑 `cd backend && uv run alembic upgrade head`。
+
+name: {{name}}
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: {{name}}
+      POSTGRES_USER: {{name}}
+      POSTGRES_PASSWORD: {{name}}_dev_pw
+      # 資料庫排序規則固定住，換機器時才不會出現排序結果不一樣的鬼故事。
+      LANG: C.UTF-8
+    ports:
+      # 主機埠已經替你避開機器上正在用的了。容器內永遠是 5432。
+      - "{{db_port}}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{name}} -d {{name}}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  db-data:

@@ -77,7 +77,10 @@ def build_parser(presets: dict[str, Preset] | None = None) -> argparse.ArgumentP
             key,
             help=preset.summary,
             description=preset.summary,
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            # 不用 ArgumentDefaultsHelpFormatter：旗標的真正預設值是 None
+            # （代表「沒給」），印出來只會變成一堆沒意義的 (default: None)。
+            # 真正的預設值由 help_for() 從問題定義取出來。
+            formatter_class=argparse.RawDescriptionHelpFormatter,
         )
         add_question_arguments(sub, preset.questions)
         sub.add_argument(
