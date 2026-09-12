@@ -20,3 +20,6 @@ dist/
 
 # 逐字對話紀錄，可能夾帶路徑或秘密，要分享前先逐份掃過
 docs/transcripts/
+
+# 無人值守模式的標記檔，是本機狀態不是專案設定
+.claude/UNATTENDED
