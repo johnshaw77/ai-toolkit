@@ -153,3 +153,115 @@ All checks passed!
 
 **`lstrip("./")` 把 `.venv/` 啃成 `venv`。** commit 前的安全檢查因此漏掉最該擋的
 東西；由 `test_venv_沒被_gitignore_擋住時不_commit` 抓到，改成明確的前綴處理。
+
+---
+
+## 2026-09-12　第二輪：app preset（FastAPI + Vue3 + antd）
+
+環境：macOS、uv 0.11.6、Node v22.21.0、npm 10.9.4。
+
+### 1. smart-scaffold 自己
+
+```
+$ uv run pytest -q
+89 passed in 0.67s
+
+$ uv run ruff check .
+All checks passed!
+```
+
+### 2. 生成一個真專案
+
+```
+$ uv run smart-scaffold app --name demo_app --title "示範管理系統" \
+    --path /tmp/app-check/demo_app --backend-port 8002 --frontend-port 5174
+✓ 已產生 81 個檔案
+
+$ grep -rno '{{[A-Za-z_][A-Za-z0-9_]*}}' /tmp/app-check/demo_app
+（無輸出——沒有殘留佔位符，Vue 的 {{ expr }} 插值則完整保留）
+```
+
+### 3. 後端：真的把服務跑起來，實際打 endpoint
+
+```
+$ cd backend && cp .env.example .env && uv sync --extra dev
+$ uv run ruff check .        → All checks passed!
+$ uv run pytest -q           → 20 passed
+$ uv run alembic upgrade head
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001, 建立初始資料表：users / refresh_tokens / items
+$ uv run python -m app.seed
+已建立管理員 admin@example.com / 初始資料建立完成。
+$ uv run uvicorn app.main:app --port 8002
+INFO:     Application startup complete.
+```
+
+正常路徑與錯誤路徑都打過：
+
+```
+GET  /api/v1/health            → 200 {"status":"ok"}
+GET  /api/v1/health/db         → 200 {"status":"ok","database":"ok"}
+POST /api/v1/auth/login（正確）  → 200 access_token / refresh_token / user
+POST /api/v1/auth/login（密碼錯）→ 401 {"code":"UNAUTHORIZED","message":"帳號或密碼不正確"}
+POST /api/v1/auth/login（缺欄位）→ 422 {"code":"VALIDATION_ERROR",...,"detail":[{"field":"password","message":"Field required"}]}
+GET  /api/v1/items（沒帶 token）→ 401 {"code":"UNAUTHORIZED","message":"請先登入"}
+GET  /api/v1/items（帶 token）  → 200 {"items":[...],"total":3,"page":1,"page_size":20}
+POST /api/v1/items             → 201 {"id":"bde85694-...","code":"B-100",...}
+POST /api/v1/items（代號重複）  → 409 {"code":"CONFLICT","message":"代號 B-100 已經有人用了"}
+GET  /api/v1/items/<不存在的 id> → 404 {"code":"NOT_FOUND","message":"找不到這筆資料"}
+```
+
+服務 log 掃過：`grep -nE "Traceback|Exception|ERROR|CRITICAL" api.log` 無輸出。
+
+### 4. 前端：裝、檢查、建置
+
+```
+$ npm install && npm run lint        → 無輸出（過）
+$ npm run type-check                 → 無輸出（過）
+$ npm test                           → 2 files / 6 tests passed
+$ npm run build                      → ✓ built in 1.69s
+```
+
+### 5. 瀏覽器實際走一次（這一條抓到最重要的 bug）
+
+用 Chrome 開 `http://localhost:5174`，先確認 `<title>` 是「登入 - 示範管理系統」
+——確定連到的是這個專案而不是別人的服務。
+
+走過的流程與看到的結果：
+
+| 步驟 | 看到什麼 |
+|---|---|
+| 開首頁 | 未登入被導向 `/login?next=/`，路由守衛有效 |
+| 登入 admin@example.com / admin1234 | 進到首頁，統計卡顯示「系統管理員 / ADMIN / 資料筆數 3」——資料是真的從 API 來的 |
+| 點「資料列表」 | ProTable 顯示 3 筆、狀態標籤有顏色、分頁顯示「共 3 筆」 |
+| 搜尋 `A-001` | 剩 1 筆，`GET /items?keyword=A-001` 出現在後端 log |
+| 新增 `C-999`／「瀏覽器實測新增的項目」 | modal 正常、toast 顯示「已新增」、`POST /items → 201` |
+| 按「重置」 | 搜尋條件清空，回到「共 4 筆」，新增的那筆在列表最上面 |
+| 切亮色模式 | 整個外殼與 antd 元件同步換色 |
+| 點「使用者」 | 管理員專屬頁顯示 admin@example.com |
+| 開一個不存在的網址 | 404 頁，而且外殼還在 |
+| 登出 | 導回登入頁 |
+
+**console 全程零 error、零 warning**（只有 Vite 自己的 `[vite] connected` DEBUG 訊息）。
+截圖存在 `docs/screenshots/app-preset-items.jpg`。
+
+### 6. 踩到並修掉的真問題
+
+**前端所有 antd 元件都沒註冊。** `main.ts` 漏了 `app.use(Antd)`。登入頁只剩
+「記住我 登入」兩行文字，輸入框整個不見。**`npm run lint`、`type-check`、`test`、
+`build` 全部綠燈，一個都沒抓到**——只有真的開瀏覽器才看得見。console 當時噴了
+9 條 `[Vue warn]: Failed to resolve component: a-xxx`。這一條就是「動到 UI 就要
+開瀏覽器」這個規定存在的理由。
+
+**後端四個 bug**（詳見該顆 commit）：`onupdate` 用 SQL 的 `func.now()` 在 async
+下炸 `MissingGreenlet`、sqlite 的 naive datetime 跟 aware 比較炸 TypeError、
+帳號不存在時的 dummy 雜湊驗證沒接例外、開發用 JWT 金鑰太短被 pyjwt 警告。
+
+**工具鏈兩個**：vitest 2 綁的是 Vite 5，跟 Vite 6 型別打架（升到 vitest 3）；
+`vite.config.ts` 的 `test` 區塊要從 `vitest/config` 匯入 `defineConfig` 才認得。
+
+### 7. 渲染器的規則改了
+
+Vue 的插值 `{{ user.name }}` 跟佔位符 `{{var}}` 撞車，渲染器會把它當成未定義的
+變數而中止。改成「大括號裡不能有空白才算佔位符」，並補了兩個測試（`test_render.py`
+的 `test_大括號裡有空白的就不是佔位符`、`test_同一個檔案裡可以同時有佔位符與_vue_插值`）。
+py preset 重生一次確認沒被影響：15 個檔案、`pytest` 8 passed、`ruff` 零錯誤。
