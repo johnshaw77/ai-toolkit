@@ -52,7 +52,7 @@
 
 <script setup lang="ts" generic="T extends { id: string }">
 import type { TablePaginationConfig, TableProps } from 'ant-design-vue'
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, type Ref } from 'vue'
 
 import { errorMessage, type Page } from '@/api/client'
 
@@ -87,7 +87,9 @@ const props = withDefaults(
   { filters: () => [], pageSize: 10, emptyText: '目前沒有資料' },
 )
 
-const rows = ref<T[]>([]) as { value: T[] }
+// 泛型元件裡的 ref 要明確斷言成 Ref<T[]>：直接寫 ref<T[]>([]) 會讓 Vue 推出
+// UnwrapRef 的展開型別，模板裡就不會自動解包，a-table 的 data-source 會對不上。
+const rows = ref([]) as Ref<T[]>
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(props.pageSize)

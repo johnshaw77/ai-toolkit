@@ -1,6 +1,8 @@
 import { fileURLToPath, URL } from 'node:url'
 
 import vue from '@vitejs/plugin-vue'
+import { AntDesignVueResolver } from 'unplugin-vue-components/resolvers'
+import Components from 'unplugin-vue-components/vite'
 // 從 vitest/config 匯入才認得 test 這個區塊；vite 自己的 defineConfig 不認得。
 import { defineConfig } from 'vitest/config'
 
@@ -8,7 +10,19 @@ import { defineConfig } from 'vitest/config'
 const inDocker = process.env.VITE_DOCKER === '1'
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    // 模板裡寫 <a-button> 就自動 import，不必整包 app.use(Antd)。
+    // 注意：這只管**模板裡的元件**。message / notification / Modal.confirm
+    // 這類命令式 API 還是要自己 `import { message } from 'ant-design-vue'`。
+    Components({
+      dts: 'src/components.d.ts',
+      resolvers: [
+        // 樣式統一由 main.ts 的 reset.css 負責，不要讓 resolver 再塞一份。
+        AntDesignVueResolver({ importStyle: false }),
+      ],
+    }),
+  ],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -34,5 +48,8 @@ export default defineConfig({
   },
   test: {
     environment: 'happy-dom',
+    // 只收 src 底下的單元測試。e2e/ 是 playwright 的地盤，兩邊的檔名慣例
+    // 一樣，不講清楚的話 vitest 會去跑 e2e 然後死得莫名其妙。
+    include: ['src/**/*.spec.ts'],
   },
 })

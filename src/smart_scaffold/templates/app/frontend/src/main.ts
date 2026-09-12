@@ -1,4 +1,3 @@
-import Antd from 'ant-design-vue'
 import { createPinia } from 'pinia'
 import { createApp } from 'vue'
 
@@ -11,9 +10,8 @@ import 'ant-design-vue/dist/reset.css'
 import './styles/theme.css'
 
 const app = createApp(App)
-// 整包註冊。要做 tree-shaking 再換成 unplugin-vue-components——但別忘了
-// message / notification 這類命令式 API 還是要自己 import。
-app.use(Antd)
+// antd 的元件由 unplugin-vue-components 按需自動 import（見 vite.config.ts），
+// 所以這裡沒有 app.use(Antd)。命令式 API（message 等）要在用到的地方自己 import。
 app.use(createPinia())
 app.use(router)
 

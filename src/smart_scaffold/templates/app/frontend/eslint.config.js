@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint'
 import vueParser from 'vue-eslint-parser'
 
 export default [
-  { ignores: ['dist/**', 'node_modules/**', 'coverage/**'] },
+  { ignores: ['dist/**', 'node_modules/**', 'coverage/**', 'src/components.d.ts', 'playwright-report/**', 'test-results/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   ...pluginVue.configs['flat/recommended'],
