@@ -1,0 +1,38 @@
+# 疊在 docker-compose.yml 上面，把資料庫換成 PostgreSQL：
+#
+#   docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --build
+#
+# 每次都要打兩個 -f 很煩的話，設一次環境變數就好：
+#   export COMPOSE_FILE=docker-compose.yml:docker-compose.postgres.yml
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: {{name}}
+      POSTGRES_USER: {{db_user}}
+      POSTGRES_PASSWORD: {{db_password}}
+      # 排序規則固定住，換機器時才不會出現「同樣的查詢排出來不一樣」。
+      LANG: C.UTF-8
+    ports:
+      # 主機埠已經替你避開機器上正在用的了。容器內永遠是 5432。
+      - "${DB_PORT:-{{db_port}}}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{db_user}} -d {{name}}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    environment:
+      # 容器之間用服務名連線，不是 127.0.0.1。
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://{{db_user}}:{{db_password}}@db:5432/{{name}}}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db-data:

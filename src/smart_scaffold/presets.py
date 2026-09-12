@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .ports import NoFreePortError, suggest_free_port
+from .ports import NoFreePortError, suggest_free_port, used_ports
 from .postactions import (
     DEFAULT_INSTALL_STEPS,
     DEFAULT_VERIFY_COMMANDS,
@@ -112,6 +112,43 @@ def _free_port(start: int, fallback: int) -> int:
 def default_port(_answers: dict[str, Any]) -> int:
     """後端／單一服務的預設埠。"""
     return _free_port(PORT_SEARCH_START, FALLBACK_PORT)
+
+
+def allocate_ports(backend_port: int, frontend_port: int, db_port: int = 0) -> dict[str, int]:
+    """把剩下那幾個沒問使用者的埠一次配好。
+
+    容器版的埠**刻意跟本機開發用的錯開**，這樣 `make api` / `make web` 跟
+    `docker compose up` 可以同時跑，不會互相卡住——那是同機開多個專案時最常見
+    的卡點。
+
+    ``db_port`` 給 0 代表沒問過（選了 sqlite），這裡照樣配一個：之後想換
+    PostgreSQL 時 compose 檔裡已經是個沒被佔用的埠，不是寫死的 5432。
+
+    只查一次 docker，不要為了每個埠各問一次。
+    """
+    try:
+        taken = set(used_ports())
+    except OSError:
+        taken = set()
+    blocked = taken | {backend_port, frontend_port}
+    if db_port:
+        blocked.add(db_port)
+
+    api = _free_port_blocked(backend_port + 1, blocked, backend_port + 1)
+    blocked.add(api)
+    web = _free_port_blocked(frontend_port + 1, blocked, frontend_port + 1)
+    blocked.add(web)
+    if not db_port:
+        db_port = _free_port_blocked(DB_PORT_SEARCH_START, blocked, FALLBACK_DB_PORT)
+
+    return {"api_container_port": api, "web_container_port": web, "db_port": db_port}
+
+
+def _free_port_blocked(start: int, blocked: set[int], fallback: int) -> int:
+    try:
+        return suggest_free_port(start, blocked=blocked)
+    except (NoFreePortError, OSError):
+        return fallback
 
 
 def default_db_port(_answers: dict[str, Any]) -> int:
@@ -298,14 +335,42 @@ def get_preset(key: str) -> Preset:
         raise KeyError(f"沒有這個 preset：{key}（可用：{known}）") from None
 
 
+#: PostgreSQL 保留給系統物件的前綴，角色名不准用它開頭。
+_PG_RESERVED_PREFIX = "pg_"
+
+
+def db_credentials(name: str) -> tuple[str, str]:
+    """資料庫的帳號與（開發用）密碼。
+
+    PostgreSQL **不允許角色名以 ``pg_`` 開頭**（那是系統保留前綴），所以專案叫
+    `pg_tools` 之類的名字時不能直接拿來當帳號——initdb 會直接失敗，而且錯誤訊息
+    藏在 db 容器的 log 裡，很難聯想到是專案名害的。
+    """
+    user = f"app_{name}" if name.startswith(_PG_RESERVED_PREFIX) else name
+    return user, f"{user}_dev_pw"
+
+
 def database_url_for(database: str, name: str, *, port: int = FALLBACK_DB_PORT) -> str:
-    """把資料庫選擇翻成連線字串。
+    """把資料庫選擇翻成連線字串（在本機跑的版本）。
 
     sqlite 是預設，因為新專案開箱就要能跑，不該先逼人裝 PostgreSQL。
     """
     if database == "postgres":
-        return f"postgresql+asyncpg://{name}:{name}_dev_pw@127.0.0.1:{port}/{name}"
+        user, password = db_credentials(name)
+        return f"postgresql+asyncpg://{user}:{password}@127.0.0.1:{port}/{name}"
     return f"sqlite+aiosqlite:///./{name}.db"
+
+
+def container_database_url_for(database: str, name: str) -> str:
+    """容器裡用的連線字串。
+
+    跟本機版有兩個差別：容器之間用**服務名**連線（不是 127.0.0.1），
+    而 sqlite 的檔案要放在掛載的 volume 上（/data），否則容器一重建資料就沒了。
+    """
+    if database == "postgres":
+        user, password = db_credentials(name)
+        return f"postgresql+asyncpg://{user}:{password}@db:5432/{name}"
+    return f"sqlite+aiosqlite:////data/{name}.db"
 
 
 def build_variables(answers: dict[str, Any]) -> dict[str, Any]:
@@ -317,16 +382,25 @@ def build_variables(answers: dict[str, Any]) -> dict[str, Any]:
     name = str(answers["name"])
     description = str(answers.get("description") or f"{name} 專案")
     database = str(answers.get("database") or "sqlite")
-    db_port = int(answers.get("db_port") or FALLBACK_DB_PORT)
+    backend_port = int(answers.get("backend_port") or FALLBACK_PORT)
+    frontend_port = int(answers.get("frontend_port") or FALLBACK_FRONTEND_PORT)
+    ports = allocate_ports(backend_port, frontend_port, int(answers.get("db_port") or 0))
+    db_port = ports["db_port"]
+    db_user, db_password = db_credentials(name)
     return {
         "name": name,
         "description": description,
         "title": str(answers.get("title") or description),
         "python_version": str(answers.get("python_version") or "3.12"),
         "port": int(answers.get("port") or FALLBACK_PORT),
-        "backend_port": int(answers.get("backend_port") or FALLBACK_PORT),
-        "frontend_port": int(answers.get("frontend_port") or FALLBACK_FRONTEND_PORT),
+        "backend_port": backend_port,
+        "frontend_port": frontend_port,
+        "api_container_port": ports["api_container_port"],
+        "web_container_port": ports["web_container_port"],
         "database": database,
         "db_port": db_port,
+        "db_user": db_user,
+        "db_password": db_password,
         "database_url": database_url_for(database, name, port=db_port),
+        "container_database_url": container_database_url_for(database, name),
     }

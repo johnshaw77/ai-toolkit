@@ -1,36 +1,41 @@
-# 只有選 PostgreSQL 時才需要這個檔案。
-# 預設的 DATABASE_URL 是 sqlite，不跑這裡的服務也能開發。
+# 容器版的整套服務。開發時不一定要用它——`make api` 加 `make web` 直接在本機
+# 跑比較快，這裡是給「要跟別人一樣的環境」或「要驗證正式建置」時用的。
 #
-#   docker compose up -d db      # 起資料庫
-#   docker compose ps            # 確認是 running/healthy
-#   docker compose logs -f db    # 看 log
+#   docker compose up -d --build   # 起來（第一次會建置映像）
+#   docker compose ps              # 每個服務都要是 running/healthy
+#   docker compose logs -f api     # 看 log
 #
-# 起來之後把 backend/.env 的 DATABASE_URL 改成：
-#   postgresql+asyncpg://{{name}}:{{name}}_dev_pw@127.0.0.1:{{db_port}}/{{name}}
-# 再跑 `cd backend && uv run alembic upgrade head`。
+# 對外的埠跟本機開發用的**刻意錯開**，兩邊可以同時跑。
+# 要換 PostgreSQL 的話多疊一個檔案，見 docker-compose.postgres.yml。
+#
+# 注意：`docker compose down -v` 會連 volume 一起刪掉，資料就沒了。
 
 name: {{name}}
 
 services:
-  db:
-    image: postgres:16-alpine
+  api:
+    build: ./backend
     restart: unless-stopped
     environment:
-      POSTGRES_DB: {{name}}
-      POSTGRES_USER: {{name}}
-      POSTGRES_PASSWORD: {{name}}_dev_pw
-      # 資料庫排序規則固定住，換機器時才不會出現排序結果不一樣的鬼故事。
-      LANG: C.UTF-8
-    ports:
-      # 主機埠已經替你避開機器上正在用的了。容器內永遠是 5432。
-      - "{{db_port}}:5432"
+      # 預設是容器內的 sqlite，檔案放在掛載的 volume 上才不會隨容器消失。
+      DATABASE_URL: ${DATABASE_URL:-{{container_database_url}}}
+      SECRET_KEY: ${SECRET_KEY:-dev-only-change-me-before-deploying-anywhere-0123456789}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:{{web_container_port}}}
+      # 第一次起來時建好管理員與範例資料。上線環境請設成 0。
+      SEED_ON_START: ${SEED_ON_START:-1}
     volumes:
-      - db-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U {{name}} -d {{name}}"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
+      - api-data:/data
+    ports:
+      - "${API_PORT:-{{api_container_port}}}:8000"
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-{{web_container_port}}}:80"
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
-  db-data:
+  api-data:

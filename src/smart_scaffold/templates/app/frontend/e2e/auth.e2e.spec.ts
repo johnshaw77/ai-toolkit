@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test'
 
-import { cjkButton, login, submitLogin, userMenu } from './helpers'
+import { APP_TITLE, cjkButton, login, submitLogin, userMenu } from './helpers'
 
 test.describe('登入', () => {
   test('未登入時會被導向登入頁，並記住原本要去的地方', async ({ page }) => {
     await page.goto('/items')
     await expect(page).toHaveURL(/\/login\?next=/)
-    await expect(page.getByRole('heading', { name: '示範管理系統' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: APP_TITLE })).toBeVisible()
   })
 
   test('密碼錯誤會顯示錯誤訊息而且留在登入頁', async ({ page }) => {

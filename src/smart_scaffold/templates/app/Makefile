@@ -1,5 +1,5 @@
 # 前後端都從專案根目錄操作，不用先 cd 進去。
-.PHONY: help install dev api web test lint fmt check build
+.PHONY: help install dev api web test e2e lint fmt check build up down logs ps
 
 help:
 	@echo "install  裝前後端依賴"
@@ -12,6 +12,15 @@ help:
 	@echo "fmt      自動修正與排版"
 	@echo "check    lint + test + 前端建置"
 	@echo "build    建置前端"
+	@echo ""
+	@echo "容器版（埠跟本機開發的錯開，兩邊可以同時跑）："
+	@echo "  up       docker compose up -d --build"
+	@echo "  down     停掉（不會刪 volume）"
+	@echo "  logs     跟著看 log"
+	@echo "  ps       看每個服務的狀態"
+	@echo ""
+	@echo "用 PostgreSQL 的話先設一次："
+	@echo "  export COMPOSE_FILE=docker-compose.yml:docker-compose.postgres.yml"
 
 install:
 	cd backend && uv sync --extra dev
@@ -44,6 +53,20 @@ fmt:
 
 build:
 	cd frontend && npm run build
+
+# 容器版。COMPOSE_FILE 設了的話這些指令會自動吃到疊加檔。
+up:
+	docker compose up -d --build
+	docker compose ps
+
+down:
+	docker compose down
+
+logs:
+	docker compose logs -f --tail=50
+
+ps:
+	docker compose ps
 
 check:
 	$(MAKE) lint

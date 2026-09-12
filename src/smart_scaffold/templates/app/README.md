@@ -79,24 +79,54 @@ API 文件在 <http://127.0.0.1:{{backend_port}}/api/v1/docs>。
 驗證：
 
 ```bash
-make check                   # lint + 後端測試 + 前端建置
+make check                   # lint + 測試 + 前端建置 + e2e
 ```
+
+端對端測試第一次跑之前要先裝瀏覽器：
+
+```bash
+cd frontend && npm run e2e:install
+make e2e                     # playwright 會自己把前後端跑起來
+```
+
+e2e 用自己的資料庫檔（`backend/e2e.db`），每次跑都重建，不會動到你開發中的資料。
+
+## 用容器跑整套
+
+```bash
+make up                      # = docker compose up -d --build
+make ps                      # 每個服務都要是 running/healthy
+make logs                    # 跟著看 log
+make down                    # 停掉（不會刪 volume）
+```
+
+開 <http://localhost:{{web_container_port}}>。容器版的埠**刻意跟本機開發錯開**
+（API {{api_container_port}}、網頁 {{web_container_port}}），所以 `make api` /
+`make web` 跟容器可以同時跑。
+
+容器啟動時會自動套用 migration；`SEED_ON_START=1`（預設）還會建好管理員與範例
+資料，上線環境請設成 `0`。
 
 ## 換成 PostgreSQL
 
+設一次環境變數，之後所有 `docker compose` 與 `make up` 都會自動吃到疊加檔：
+
 ```bash
-docker compose up -d db
-docker compose ps            # 確認是 healthy
+export COMPOSE_FILE=docker-compose.yml:docker-compose.postgres.yml
+make up
 ```
 
-然後把 `backend/.env` 的 `DATABASE_URL` 改成：
+要在本機（不進容器）連它的話，把 `backend/.env` 的 `DATABASE_URL` 改成：
 
 ```
-postgresql+asyncpg://{{name}}:{{name}}_dev_pw@127.0.0.1:{{db_port}}/{{name}}
+postgresql+asyncpg://{{db_user}}:{{db_password}}@127.0.0.1:{{db_port}}/{{name}}
 ```
 
 再跑一次 `cd backend && uv run alembic upgrade head`。`asyncpg` 已經在依賴裡，
 不用再裝東西。
+
+> `docker compose down -v` 會連 volume 一起刪掉，資料庫裡的東西就沒了。
+> 只是要停掉服務的話用 `make down`。
 
 ## 下一步
 

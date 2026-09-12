@@ -92,3 +92,49 @@ def test_選_sqlite_就不問資料庫埠():
     )
     assert answers["db_port"] == 5439
     assert ":5439/" in build_variables(answers)["database_url"]
+
+
+def test_每個埠都不一樣而且容器版跟本機開發錯開():
+    """兩邊要能同時跑——同機開多個專案時這是最常見的卡點。"""
+    variables = build_variables(
+        {"name": "demo", "backend_port": 8002, "frontend_port": 5174}
+    )
+    ports = [
+        variables["backend_port"],
+        variables["frontend_port"],
+        variables["api_container_port"],
+        variables["web_container_port"],
+        variables["db_port"],
+    ]
+    assert len(set(ports)) == len(ports)
+
+
+def test_選_sqlite_也會配一個沒被佔用的資料庫埠():
+    """沒問不代表可以寫死 5432——那個埠在開發機上幾乎一定已經有人用了。"""
+    from smart_scaffold.ports import is_port_free
+
+    variables = build_variables({"name": "demo", "backend_port": 8002, "frontend_port": 5174})
+    port = variables["db_port"]
+    assert 1 <= port <= 65535
+    assert is_port_free(port), f"配出來的 {port} 其實有人在用"
+
+
+def test_容器裡的連線字串用服務名而不是_127():
+    from smart_scaffold.presets import container_database_url_for
+
+    assert container_database_url_for("postgres", "demo") == (
+        "postgresql+asyncpg://demo:demo_dev_pw@db:5432/demo"
+    )
+    # sqlite 的檔案要放在掛載的 volume 上，否則容器一重建資料就沒了。
+    assert container_database_url_for("sqlite", "demo") == "sqlite+aiosqlite:////data/demo.db"
+
+
+def test_專案名以_pg_開頭時資料庫帳號要換掉():
+    """PostgreSQL 不准角色名以 pg_ 開頭，直接拿專案名當帳號會讓 initdb 失敗。"""
+    from smart_scaffold.presets import db_credentials
+
+    assert db_credentials("demo")[0] == "demo"
+    assert db_credentials("pg_tools")[0] == "app_pg_tools"
+    userinfo = database_url_for("postgres", "pg_tools").split("//", 1)[1].split("@", 1)[0]
+    assert userinfo == "app_pg_tools:app_pg_tools_dev_pw"
+    assert not userinfo.startswith("pg_")

@@ -1,5 +1,8 @@
 import { expect, type Page } from '@playwright/test'
 
+/** 專案顯示名稱。寫死的話換個專案名整組測試就紅了。 */
+export const APP_TITLE = '{{title}}'
+
 export const ADMIN_EMAIL = 'admin@example.com'
 export const ADMIN_PASSWORD = 'admin1234'
 

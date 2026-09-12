@@ -44,12 +44,24 @@
 ## 驗證的定義
 
 ```bash
-cd backend && uv run pytest && uv run ruff check .
-cd frontend && npm run lint && npm run type-check && npm test && npm run build
+make check   # 後端 ruff + pytest、前端 eslint + vitest + build、然後 e2e
 ```
 
-光是 type-check 過不算數。**動到 UI 就要真的開瀏覽器走一次流程**，
-console 不可以有任何 error 或 warning。
+光是 type-check 過不算數。**動到 UI 就一定要跑 `make e2e`**——
+`e2e/shell.e2e.spec.ts` 裡有一條會走過每一頁並斷言 console 沒有任何 error 或
+warning，那是為了擋住「四道檢查全綠但畫面其實是壞的」這種情況（這個專案的模板
+就被這樣坑過一次：漏掉元件註冊，lint/type-check/單元測試/build 全部沒抓到）。
+
+e2e 用自己的資料庫檔，每次跑都重建，不會動到你開發中的資料。
+第一次跑之前要 `cd frontend && npm run e2e:install` 裝瀏覽器。
+
+## 容器
+
+`make up` / `make down` / `make logs` / `make ps`。容器版的埠跟本機開發的**刻意
+錯開**，兩邊可以同時跑。用 PostgreSQL 的話先
+`export COMPOSE_FILE=docker-compose.yml:docker-compose.postgres.yml`。
+
+**不要自己跑 `docker compose down -v`**——那會連 volume 一起刪掉。
 
 ## 還沒決定的事
 
