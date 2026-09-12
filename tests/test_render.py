@@ -21,8 +21,16 @@ def test_基本替換():
     assert render_text("套件 {{name}} 啟動", VARS) == "套件 demo_tool 啟動"
 
 
-def test_佔位符裡的空白不影響替換():
-    assert render_text("{{ name }}", VARS) == "demo_tool"
+def test_大括號裡有空白的就不是佔位符():
+    """Vue 的插值長得一模一樣，靠空白分辨——這是刻意的，不是疏忽。"""
+    assert render_text("{{ name }}", VARS) == "{{ name }}"
+    assert render_text("{{ user.fullName }}", VARS) == "{{ user.fullName }}"
+
+
+def test_同一個檔案裡可以同時有佔位符與_vue_插值():
+    source = "<span>{{ brandInitial }}</span><script>const t = '{{name}}'</script>"
+    expected = "<span>{{ brandInitial }}</span><script>const t = 'demo_tool'</script>"
+    assert render_text(source, VARS) == expected
 
 
 def test_makefile_的錢字號一字不變():

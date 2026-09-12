@@ -1,7 +1,15 @@
 """模板渲染器：把 ``templates/<preset>/`` 整棵複製到目標路徑，過程中替換變數。
 
-佔位符是 ``{{var}}``。**刻意不用 ``string.Template`` 的 ``$var``**——模板裡有
-Makefile 與 shell，`$(MAKE)` 和 `$$` 會被咬掉。
+佔位符是 ``{{var}}``，**大括號裡不能有空白**。
+
+刻意不用 ``string.Template`` 的 ``$var``——模板裡有 Makefile 與 shell，
+`$(MAKE)` 和 `$$` 會被咬掉。
+
+「不能有空白」這條是為了跟 Vue 共存：Vue 的插值長得一模一樣（``{{ user.name }}``），
+而 prettier 會把它排版成前後帶空白的樣子。所以規則是——
+
+* ``{{var}}``（沒空白）＝ 腳手架的佔位符，會被替換，不認得的變數直接中止。
+* ``{{ expr }}``（有空白）＝ 原樣留著，交給 Vue 自己處理。
 """
 
 from __future__ import annotations
@@ -13,7 +21,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-PLACEHOLDER = re.compile(r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
+PLACEHOLDER = re.compile(r"\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}")
 
 
 class RenderError(Exception):
