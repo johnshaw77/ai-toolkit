@@ -102,6 +102,10 @@ docker ps --format '{{.Names}}\t{{.Ports}}' | grep 5173
 | 只看得到「上一場」對話 | 舊版只在 SessionEnd 轉檔。0.13.0 起 Stop hook 每輪也會更新 |
 | 落後一個回合 | 正常：Stop hook 是在回合**結束時**跑的 |
 | 完全沒有任何輸出 | 缺 `python3` 或 `jq` |
+| `git status` 看不到紀錄 | 正常：0.19.0 起資料夾內有 `.gitignore`（`*`），預設不進版控 |
+| 有 `.gitignore` 但紀錄還是出現在 `git status` | 以前 commit 過，ignore 管不到已追蹤的檔案。`git rm -r --cached docs/transcripts` 後 commit |
+| 把 `.gitignore` 刪了，下一輪又長回來 | 刻意的：只有檔案不存在才寫入。要進版控就保留檔案、刪掉裡面的 `*` |
+| worktree 收掉後紀錄不見了 | 被 ignore 的檔案 `git worktree remove` 不會擋，直接一起刪。見 `docs/PARALLEL.md` 收尾那節 |
 
 ### 先確認你裝的是哪一版
 

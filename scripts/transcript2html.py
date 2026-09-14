@@ -9,8 +9,9 @@
     transcript2html.py --all                     轉全部專案（存到全域）
     transcript2html.py --index                   只重建全域索引頁
 
---here 是給「想跟團隊分享」用的：只收這個專案的對話，輸出成可 commit 的
-自足 HTML，放在 <專案>/docs/transcripts/。其餘模式輸出到 ~/.claude/transcripts/。
+--here 是給「想跟團隊分享」用的：只收這個專案的對話，輸出成自足 HTML，
+放在 <專案>/docs/transcripts/（附 .gitignore，預設不進版控）。
+其餘模式輸出到 ~/.claude/transcripts/。
 """
 import json
 import os
@@ -358,6 +359,38 @@ def build_index(root: Path = None, heading: str = "對話紀錄", flat: bool = F
     return len(entries)
 
 
+GITIGNORE = """\
+# unattended plugin 自動產生。對話紀錄是逐字稿，可能含 .env 內容、API key、
+# 內部主機名，所以預設不進版控。
+# 確定要 commit 的話先掃過敏感字，再把下面那行 * 刪掉——這個檔案要留著，
+# 只有檔案不存在時 plugin 才會重新寫入。
+*
+"""
+
+
+def ensure_gitignore(out, proj):
+    """docs/transcripts/ 預設不進版控。
+
+    放在資料夾自己裡面，而不是改專案根目錄的 .gitignore：不必動使用者的檔案，
+    刪掉資料夾（關閉存檔）時也不會留下殘骸。已存在就不碰，使用者改過的內容優先。
+    """
+    gi = out / ".gitignore"
+    if not gi.exists():
+        gi.write_text(GITIGNORE, encoding="utf-8")
+    # .gitignore 管不到已經被追蹤的檔案。早期版本沒有這個檔，有些專案已經 commit 過。
+    try:
+        import subprocess
+        r = subprocess.run(["git", "-C", str(proj), "ls-files", "--", str(out)],
+                           capture_output=True, text=True, timeout=10)
+        if r.returncode == 0 and r.stdout.strip() \
+                and any(l.strip() == "*" for l in gi.read_text(encoding="utf-8").splitlines()):
+            print(f"⚠ {out} 已有檔案被 git 追蹤，.gitignore 對它們無效。要移出版控：\n"
+                  f"  git -C {proj} rm -r --cached docs/transcripts && git -C {proj} commit",
+                  file=sys.stderr)
+    except Exception:
+        pass
+
+
 def main():
     args = sys.argv[1:]
     if not args:
@@ -372,12 +405,13 @@ def main():
         only = Path(args[2]).resolve() if len(args) > 2 else None
         src = PROJECTS / project_dir_name(proj)
         out = proj / "docs" / "transcripts"
+        out.mkdir(parents=True, exist_ok=True)
+        ensure_gitignore(out, proj)
         if not src.is_dir():
             # 這個專案還沒有任何紀錄（全新專案、或從沒在這裡開過對話）。
             # 資料夾仍然要建——它的存在就是自動存檔的開關，hook 之後會自己填內容。
             # 這裡回 0 不回 1：/spec 會在收尾時跑這支腳本，不該因為「還沒有紀錄」
             # 就讓開關沒打開，那樣使用者走人之後整輪都不會被存下來。
-            out.mkdir(parents=True, exist_ok=True)
             build_index(out, heading=f"{proj.name} · 對話紀錄", flat=True)
             print(f"這個專案還沒有紀錄，先建立 {out}（自動存檔已啟用）")
             return 0

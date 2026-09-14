@@ -138,7 +138,8 @@ README.md 給第一次看到專案的人讀：這是什麼、怎麼跑、結構�
 - commit 前先確認 `git status`，不要順手把不相干的檔案一起帶進去。
 - 開新 repo 時尊重使用者既有的分支慣例（看 `git config init.defaultBranch`）。
 
-`docs/transcripts/` 若要進版控，先掃過一次再 commit——那是逐字紀錄，
+`docs/transcripts/` 預設不進版控（資料夾裡有 plugin 產生的 `.gitignore`），
+不要自己把它加回 git。使用者明說要 commit 的話，先掃過一次——那是逐字紀錄，
 可能含 `.env` 內容、API key、內部主機名：
 
 ```

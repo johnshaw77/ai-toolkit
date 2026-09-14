@@ -91,8 +91,8 @@ git worktree add ../myapp-api -b feat/api
 git worktree add ../myapp-web -b feat/web
 ```
 
-⚠️ **每個 worktree 都要確認 `docs/transcripts/` 存在。** git 不追蹤空資料夾，
-主目錄有、worktree 裡不一定有——沒有的話那一場完全不會存檔。
+⚠️ **每個 worktree 都要確認 `docs/transcripts/` 存在。** 那個資料夾預設不進
+版控，主目錄有、worktree 裡一定沒有——沒有的話那一場完全不會存檔。
 `/unattended:mode` 開啟時會順手建；用 `bin/unattended` 啟動的話它不會建，
 進去之後跑一次 `/unattended:transcripts`。
 
@@ -174,8 +174,14 @@ git worktree remove ../myapp-api
 git worktree remove ../myapp-web
 ```
 
-worktree 裡的 `docs/transcripts/` 如果沒 commit，`remove` 會拒絕（有未追蹤檔案）。
-要保留就先 commit；不保留也沒關係，原始 JSONL 還在 `~/.claude/projects/`，
+⚠️ worktree 裡的 `docs/transcripts/` 是被 ignore 的，`remove` **不會拒絕，
+會直接連同刪掉**。要保留就先複製出來：
+
+```bash
+cp -R ../myapp-api/docs/transcripts ./transcripts-api   # remove 之前
+```
+
+不保留也沒關係，原始 JSONL 還在 `~/.claude/projects/`，
 全域的 `~/.claude/transcripts/` 也會收錄這兩場。
 
 ## 檢查清單

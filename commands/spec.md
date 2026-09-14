@@ -134,8 +134,8 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/transcript2html.py" --here
 
 為什麼在這裡做：那個資料夾的存在**就是自動存檔的開關**，而寫完規格就等於
 要動工了——這是使用者最後一次還在現場的時機。等他走人之後才發現沒開，
-整輪過程就只剩 `~/.claude/transcripts/` 的全域封存，沒有可以 commit、
-可以分享的那一份。
+整輪過程就只剩 `~/.claude/transcripts/` 的全域封存，沒有放在專案裡、
+可以直接開來看或分享的那一份。
 
 回報時附一句「對話存檔已啟用，回來後開 `docs/transcripts/index.html` 調閱」。
 

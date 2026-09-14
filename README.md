@@ -218,7 +218,8 @@ Claude 想結束回合時攔一次，檢查三件事：
 | 要不要啟用 | **要**——資料夾存在＝開，不存在就完全不寫 | 不用，一律更新 |
 | 誰會幫你開 | `/unattended:transcripts`、`/unattended:spec`、`/unattended:mode` | — |
 | 收錄範圍 | 只有這個專案 | 所有專案 |
-| 拿來做什麼 | 可以 commit、分享給團隊 | 自己事後調閱 |
+| 拿來做什麼 | 跟著專案走、可以分享給團隊 | 自己事後調閱 |
+| 進不進 git | **預設不進**（資料夾內有 `.gitignore`） | — |
 
 **新專案預設是關的**，這是刻意的——不然 plugin 會在別人的每個 repo 裡長出
 一個資料夾。代價是你如果沒跑過上面任何一個指令，`docs/transcripts/` 不會出現，
@@ -236,11 +237,21 @@ Claude 想結束回合時攔一次，檢查三件事：
 tmux 被 `kill-session` 強制砍掉時 SessionEnd 根本不會執行——有了 Stop 這個
 觸發點，紀錄最多只會落後一個回合。
 
-⚠️ **分享前務必檢查**：紀錄是逐字保留的，包含所有工具輸入輸出，可能含 `.env`
-內容或 token。
+⚠️ **預設不進版控**：紀錄是逐字保留的，包含所有工具輸入輸出，可能含 `.env`
+內容或 token。所以 plugin 每次寫入時都會確保 `docs/transcripts/.gitignore` 存在
+（內容是 `*`）。確定要 commit 的話，先掃過：
 
 ```bash
 grep -rioE "api[_-]key|secret|password|token|BEGIN.*PRIVATE KEY" docs/transcripts/*.html
+```
+
+沒問題再把那個 `.gitignore` 裡的 `*` 刪掉——**檔案本身要留著**，plugin 只在
+它不存在時才寫回來。
+
+以前已經 commit 過紀錄的專案，`.gitignore` 對那些檔案無效，要自己移出版控：
+
+```bash
+git rm -r --cached docs/transcripts && git commit -m "對話紀錄移出版控"
 ```
 
 ## 搭配 tmux 使用

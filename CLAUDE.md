@@ -68,6 +68,8 @@ python3 scripts/transcript2html.py --index             # 只重建全域索引
 
 <專案>/docs/transcripts/  存在 ＝ 自動存檔已啟用
   建立者：/unattended:transcripts、/unattended:mode（開啟時順手建）
+  內含 .gitignore（`*`）＝ 預設不進版控。由 transcript2html.py --here 每次確保存在，
+  所以所有寫入路徑（hook 與三個指令）都自動帶到；已存在就不覆寫
   讀取者：hooks/archive-transcript.sh（Stop 與 SessionEnd 各註冊一次）
 ```
 
