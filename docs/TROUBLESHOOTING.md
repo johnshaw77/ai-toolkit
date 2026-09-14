@@ -167,3 +167,20 @@ rm .claude/UNATTENDED  # 或直接刪
 
 迴圈中途想停：`tmux kill-session -t claude-<專案>`，然後確認 `.claude/UNATTENDED`
 已刪（被強制砍掉時可能殘留，見上一節）。
+
+---
+
+## Windows
+
+| 症狀 | 原因與處理 |
+|---|---|
+| hook 或 `unattended` 報 `$'\r': command not found` | 腳本被 checkout 成 CRLF。0.21.0 起 `.gitattributes` 固定成 LF，但**在那之前就 clone 的副本不一定會自動修正**。先在 `~/.claude/plugins/marketplaces/claude-unattended-workflow` 執行 `git rm --cached -r . -q && git reset --hard`，再 `/plugin uninstall unattended`、`/plugin install unattended` 讓快取重新複製，然後重開 Claude Code |
+| `✗ 沒有安裝 tmux` | 原生 Windows 沒有 tmux。加 `--no-tmux`，或改用 WSL |
+| 無人值守跑到一半整個停住，沒有任何錯誤 | 電腦睡眠了。設定 → 系統 → 電源，接電源時睡眠改成「永不」 |
+| `unattended` 還是舊版（沒有 `--loop`） | 用 `cp` 或 Git Bash 的 `ln -s`（預設是複製）裝的。改用 README 裡的 alias 直接呼叫 plugin 那份 |
+| hook 完全沒作用、也沒有 jq 的提示 | Claude Code 找不到 Git Bash，改用 PowerShell 跑 hook。裝 Git for Windows，必要時設定 `CLAUDE_CODE_GIT_BASH_PATH` 指到 `bash.exe` |
+| 對話存檔沒產生 | Python 叫 `python` 不叫 `python3` 已經處理；確認 `python --version` 能跑，而不是跳出 Microsoft Store |
+| SPEC.md 用 Windows 編輯器存成 CRLF | 不影響：迴圈計數與跳過都有處理 `\r` |
+
+> 以上是依腳本內容推斷與 macOS 上模擬（CRLF 檔案、拿掉 tmux 的 PATH）驗證的，
+> 尚未在 Windows 實機跑過。實際踩到的坑請補進這一節。

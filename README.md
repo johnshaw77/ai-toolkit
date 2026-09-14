@@ -45,7 +45,7 @@
 | `bash` | 三個 hook 都是 bash 腳本 | **完全不會運作** |
 | `jq` | hook 解析輸入、輸出 JSON | **完全不會運作**（會顯示提示訊息） |
 | `python3` 或 `python` | 對話紀錄轉 HTML | 只有存檔功能失效，其餘正常 |
-| `tmux` | 選配的 `bin/unattended` | 只影響那支選配腳本 |
+| `tmux` | 選配的 `bin/unattended` | 那支腳本加 `--no-tmux` 改在前景執行；其餘不受影響 |
 
 轉檔只用 Python 標準庫，不必 `pip install`。
 
@@ -68,8 +68,13 @@ winget install jqlang.jq        # 提供 jq
 Windows 上的其他注意事項：
 
 - Python 通常叫 `python` 而不是 `python3`——plugin 兩個都會試，不用特別處理。
-- **`tmux` 在原生 Windows 上沒有**。要無人值守跑很久，用 WSL，或改用
-  Windows Terminal 開一個獨立分頁不要關掉。`/unattended:mode` 指令本身不受影響。
+- **`tmux` 在原生 Windows 上沒有**。`bin/unattended` 在 Git Bash 裡要加
+  `--no-tmux`（見[選配：一鍵啟動腳本](#選配一鍵啟動腳本)）；要完整體驗就用 WSL。
+  `/unattended:mode` 指令本身不受影響。
+- **電腦會睡眠**：Windows 預設閒置一段時間就睡，無人值守會整個停住。
+  跑之前到「設定 → 系統 → 電源」把睡眠改成「永不」（接電源時）。
+- 本 repo 用 `.gitattributes` 把腳本固定成 LF。如果 hook 報
+  `$'\r': command not found`，見 `docs/TROUBLESHOOTING.md` 的 Windows 那節。
 - 排錯文件裡的 `lsof` 指令在 Windows 要換成 `netstat -ano | findstr :5173`。
 
 缺 `jq` 時 plugin 不會靜靜失效——它會在對話開始時顯示一則訊息告訴你原因。
@@ -275,13 +280,28 @@ tmux attach -t claude   # 回來接上
 ### 選配：一鍵啟動腳本
 
 `bin/unattended` 把「建立標記檔 + 開 tmux + 啟動 Claude Code」包成一個指令。
-它**不會自動安裝**（plugin 不能動你的 PATH），要用的話自己接上：
+它**不會自動安裝**（plugin 不能動你的 PATH），要用的話自己接上。
+
+**不要用 `cp` 複製**——複製出去的那份不會跟著 plugin 更新，會一直停在舊版
+（沒有 `--loop` 之類的新功能）。改成連到 plugin 自己的位置，
+`claude plugin update` 之後就自動是新版：
+
+**macOS / Linux / WSL**：
 
 ```bash
 mkdir -p ~/.local/bin
-cp <這個 repo>/bin/unattended ~/.local/bin/
-chmod +x ~/.local/bin/unattended
+ln -sf ~/.claude/plugins/marketplaces/claude-unattended-workflow/bin/unattended ~/.local/bin/unattended
 # 確認 ~/.local/bin 在 PATH 裡，沒有的話加進 ~/.zshrc
+```
+
+以前用 `cp` 裝過的，重跑上面那行 `ln -sf` 就會蓋掉舊的。
+
+**Windows（Git Bash）**：Git Bash 的 `ln -s` 預設會變成複製，一樣會停在舊版。
+改成在 `~/.bashrc` 加一個 alias，直接呼叫 plugin 裡的那份：
+
+```bash
+echo "alias unattended='bash ~/.claude/plugins/marketplaces/claude-unattended-workflow/bin/unattended --no-tmux'" >> ~/.bashrc
+source ~/.bashrc
 ```
 
 然後：
@@ -298,6 +318,29 @@ tmux attach -t claude-<專案>      # 進去貼任務
 不會被 commit。
 
 不裝也完全沒差——`/unattended:mode` 指令加上手動開 tmux 是一樣的效果。
+`unattended --help` 看全部選項。
+
+#### 沒有 tmux：`--no-tmux`
+
+不開 tmux，直接在目前的終端機前景執行。給 Windows（Git Bash）用，
+或是不想裝 tmux 的人：
+
+```bash
+unattended --no-tmux                 # 單場：直接啟動 claude，結束時清掉標記檔
+unattended --loop --no-tmux          # 迴圈：在這個視窗一項一項跑
+```
+
+代價：**視窗不能關、電腦不能睡**，也沒辦法「脫離之後再接上」。
+中途要停就按 Ctrl+C，標記檔會自動清掉。
+
+| 平台 | 建議 |
+|---|---|
+| macOS / Linux | 裝 tmux，不加 `--no-tmux` |
+| Windows + WSL | 在 WSL 裡裝 Claude Code 與 tmux，當成 Linux 用（專案要放在 WSL 的檔案系統裡，放 `/mnt/c/` 會很慢） |
+| Windows 原生 | Git Bash + `--no-tmux`，並關掉睡眠 |
+
+> ⚠️ Windows 上的 `--no-tmux` 是依腳本用到的指令（bash、grep、awk、git、tee）
+> 推斷可以運作，**尚未在 Windows 實機驗證**。遇到問題請回報。
 
 ### 迴圈模式：每一項一場全新對話
 
@@ -310,6 +353,7 @@ cd <專案>
 git checkout -b feat/xxx
 unattended --loop                             # 讀 SPEC.md，一項一場
 unattended --loop "備註" -- --model sonnet    # -- 之後的參數原樣交給 claude
+unattended --loop --no-tmux                   # 沒有 tmux（Windows）：前景執行
 ```
 
 | 情況 | 迴圈怎麼做 |
@@ -391,7 +435,7 @@ bin/
 ## 遇到問題
 
 看 [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md)：守門員沒擋、改了 plugin
-沒生效、**埠口衝突導致驗證假通過**、存檔沒產生、無人值守關不掉、`--loop` 行為不如預期。
+沒生效、**埠口衝突導致驗證假通過**、存檔沒產生、無人值守關不掉、`--loop` 行為不如預期、Windows。
 
 ## 授權
 

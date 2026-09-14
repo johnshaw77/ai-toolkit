@@ -4,6 +4,8 @@
 #   unattended "把 SPEC.md 的六項功能做完"     單場模式：開 tmux + claude，接上去貼任務
 #   unattended                                 不給備註也可以
 #   unattended --loop ["備註"] [-- claude 參數]  迴圈模式：SPEC.md 每一項開一場全新對話
+#   加 --no-tmux：不開 tmux，前景執行（Windows 的 Git Bash 用這個）
+#   unattended --help                          完整說明
 #
 # 單場模式做三件事：
 #   1. 在專案建立 .claude/UNATTENDED 標記（SessionStart hook 會讀到）
@@ -61,7 +63,8 @@ loop_worker() {
 
     local before item prompt rc
     before=$(open_count)
-    item=$(grep -m1 -E '^- \[ \] ' SPEC.md)
+    # Windows 編輯器存的 SPEC.md 可能是 CRLF：項目文字去掉 \r，比對時再兩邊一起處理
+    item=$(grep -m1 -E '^- \[ \] ' SPEC.md | tr -d '\r')
     say ""
     say "──── 第 $round 輪 $(date '+%F %T') ・ 剩 $before 項"
     say "     $item"
@@ -112,11 +115,13 @@ loop_worker() {
     fi
 
     # 連續兩輪沒進展 → 跳過。用 awk 比對整行，避免項目文字裡的特殊字元被當成 regex。
+    # 行尾的 \r 先拿掉再比對、附加說明之後再補回去，CRLF 檔案才不會變成「文字\r（說明）」。
     local tmp
     tmp=$(mktemp)
     awk -v it="$item" '
+      { cr = sub(/\r$/, "") }
       !done && $0 == it { sub(/^- \[ \] /, "- [-] "); $0 = $0 "（迴圈自動跳過：連續兩輪沒有進展，見 .claude/unattended-loop.log）"; done = 1 }
-      { print }' SPEC.md > "$tmp" && cat "$tmp" > SPEC.md
+      { printf "%s%s\n", $0, (cr ? "\r" : "") }' SPEC.md > "$tmp" && cat "$tmp" > SPEC.md
     rm -f "$tmp"
     git add SPEC.md >/dev/null 2>&1 && git commit -q -m "跳過卡住的項目：${item#- \[ \] }" -- SPEC.md >/dev/null 2>&1
     say "⤼ 連續兩輪沒有進展，已標成 - [-] 並跳過"
@@ -150,25 +155,55 @@ fi
 
 # ─────────────────────────── 啟動器 ───────────────────────────
 
+usage() {
+  cat <<'EOF'
+用法：
+  unattended ["備註"]                      單場：開 tmux + claude，接上去貼任務
+  unattended --loop ["備註"]               迴圈：SPEC.md 每個 `- [ ]` 開一場全新對話
+  unattended ... -- <claude 參數>          -- 之後的參數原樣交給 claude（例如 --model sonnet）
+
+選項：
+  --loop      迴圈模式（需要 SPEC.md 核取方塊格式與 git）
+  --no-tmux   不開 tmux，直接在目前的終端機前景執行。
+              Windows（Git Bash）沒有 tmux 時用這個；視窗不能關、電腦不能睡。
+  -h, --help  顯示這段說明
+EOF
+}
+
 LOOP=0
-if [ "${1:-}" = "--loop" ]; then LOOP=1; shift; fi
+NO_TMUX=0
 NOTE=""
-if [ $# -gt 0 ] && [ "$1" != "--" ]; then NOTE="$1"; shift; fi
-[ "${1:-}" = "--" ] && shift
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --loop)    LOOP=1; shift ;;
+    --no-tmux) NO_TMUX=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    --)        shift; break ;;
+    -*)        echo "✗ 不認得的選項：$1（要傳給 claude 的參數放在 -- 之後）"; usage; exit 1 ;;
+    *)         NOTE="$1"; shift ;;
+  esac
+done
 CLAUDE_ARGS=("$@")
 PROJ="$PWD"
 # printf 而不是直接 pipe basename：它的結尾換行會被 tr 換成多出來的「-」
 NAME="claude-$(printf '%s' "$(basename "$PROJ")" | tr -c 'a-zA-Z0-9_-' '-')"
 
 # --- 前置檢查 ---
-command -v tmux >/dev/null || { echo "✗ 沒有安裝 tmux：brew install tmux"; exit 1; }
 command -v claude >/dev/null || { echo "✗ 找不到 claude 指令"; exit 1; }
 
-if tmux has-session -t "$NAME" 2>/dev/null; then
-  echo "✗ session「${NAME}」已經在跑了。"
-  echo "  接上： tmux attach -t $NAME"
-  echo "  關掉： tmux kill-session -t $NAME"
-  exit 1
+if [ "$NO_TMUX" = 0 ]; then
+  if ! command -v tmux >/dev/null; then
+    echo "✗ 沒有安裝 tmux。"
+    echo "  macOS：brew install tmux ／ Linux：sudo apt install tmux"
+    echo "  Windows（Git Bash）沒有 tmux：加 --no-tmux 在目前的視窗前景執行。"
+    exit 1
+  fi
+  if tmux has-session -t "$NAME" 2>/dev/null; then
+    echo "✗ session「${NAME}」已經在跑了。"
+    echo "  接上： tmux attach -t $NAME"
+    echo "  關掉： tmux kill-session -t $NAME"
+    exit 1
+  fi
 fi
 
 if [ "$LOOP" = 1 ]; then
@@ -196,7 +231,7 @@ if git -C "$PROJ" rev-parse --git-dir >/dev/null 2>&1; then
   # 標記檔與迴圈 log 不該被 commit（別人 clone 下來就變成無人值守）。
   # 寫進 .git/info/exclude 而不是 .gitignore：只影響本機，不改專案檔案。
   exclude="$(git -C "$PROJ" rev-parse --git-path info/exclude)"
-  case "$exclude" in /*) ;; *) exclude="$PROJ/$exclude" ;; esac
+  case "$exclude" in /*|[A-Za-z]:*) ;; *) exclude="$PROJ/$exclude" ;; esac   # 後者是 Windows 的 C:/…
   mkdir -p "$(dirname "$exclude")"
   for pat in ".claude/UNATTENDED" "$LOG_NAME"; do
     grep -qxF "$pat" "$exclude" 2>/dev/null || printf '%s\n' "$pat" >> "$exclude"
@@ -207,17 +242,35 @@ fi
 mkdir -p "$PROJ/.claude"
 printf '%s\n' "$NOTE" > "$PROJ/.claude/UNATTENDED"
 
+# --- 前景執行（--no-tmux）---
+if [ "$NO_TMUX" = 1 ]; then
+  if [ "$LOOP" = 1 ]; then
+    cat <<EOF
+✓ 無人值守迴圈在前景執行（每一項一場全新對話）
+
+  專案      $PROJ
+  待辦      $(cd "$PROJ" && open_count) 項
+  備註      ${NOTE:-（無）}
+  log       $PROJ/$LOG_NAME
+
+⚠️  這個視窗不能關，電腦不能進入睡眠。中途要停按 Ctrl+C（標記檔會自動清掉）。
+⚠️  迴圈用 --permission-mode bypassPermissions 跑，不會有任何權限詢問。
+
+EOF
+    loop_worker "$PROJ" "$NOTE" ${CLAUDE_ARGS[@]+"${CLAUDE_ARGS[@]}"}
+    exit $?
+  fi
+  trap 'rm -f "$PROJ/.claude/UNATTENDED"' EXIT
+  echo "✓ 無人值守模式（前景）：結束 claude 時會自動清掉標記檔。視窗不能關、電腦不能睡。"
+  claude ${CLAUDE_ARGS[@]+"${CLAUDE_ARGS[@]}"}
+  exit $?
+fi
+
 # --- 開 tmux 並啟動，結束後自動清掉標記 ---
 if [ "$LOOP" = 1 ]; then
   cmd=$(printf '%q ' bash "$SELF" __loop-worker "$PROJ" "$NOTE" ${CLAUDE_ARGS[@]+"${CLAUDE_ARGS[@]}"})
   # 跑完停在 shell，讓你接上時還看得到最後的總結
   tmux new-session -d -s "$NAME" -c "$PROJ" "$cmd; echo; echo '（迴圈已結束，按 Enter 關閉）'; read -r"
-else
-  tmux new-session -d -s "$NAME" -c "$PROJ" \
-    "claude; rm -f '$PROJ/.claude/UNATTENDED'"
-fi
-
-if [ "$LOOP" = 1 ]; then
   cat <<EOF
 ✓ 無人值守迴圈已啟動（每一項一場全新對話）
 
@@ -228,13 +281,16 @@ if [ "$LOOP" = 1 ]; then
 
   看進度       tmux attach -t $NAME
                tail -f $PROJ/$LOG_NAME
-               open $PROJ/docs/transcripts/index.html（有啟用存檔的話）
+               docs/transcripts/index.html（有啟用存檔的話）
   走人（脫離） Ctrl+b 放開，再按 d
   強制結束     tmux kill-session -t $NAME && rm -f '$PROJ/.claude/UNATTENDED'
 
 ⚠️  迴圈用 --permission-mode bypassPermissions 跑，不會有任何權限詢問。
 EOF
 else
+  cmd=$(printf '%q ' claude ${CLAUDE_ARGS[@]+"${CLAUDE_ARGS[@]}"})
+  tmux new-session -d -s "$NAME" -c "$PROJ" \
+    "$cmd; rm -f '$PROJ/.claude/UNATTENDED'"
   cat <<EOF
 ✓ 無人值守已啟動
 

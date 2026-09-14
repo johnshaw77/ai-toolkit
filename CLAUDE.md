@@ -158,6 +158,13 @@ stdout 只能有回傳給 Claude Code 的那一包 JSON，所以 fd 1 整個導�
   兩個都試，任何呼叫 Python 的地方都要照做。
 - Windows 沒有 `tmux`，所以 `bin/unattended` 是**選配**、不自動安裝
   （plugin 不能動使用者的 PATH）。核心功能不可以依賴它。
+  沒有 tmux 時走 `--no-tmux`（前景執行）——新增依賴 tmux 的功能時，
+  `--no-tmux` 那條路徑要跟著支援。
+- **安裝方式是 symlink／alias 指向 marketplace 目錄，不是 `cp`**：複製出去的副本
+  不會跟著 `claude plugin update` 更新。
+- `.gitattributes` 把 `*.sh`、`bin/unattended` 固定 LF。新增 bash 腳本若不是 `.sh`
+  副檔名，要加進去——Windows 的 autocrlf 會讓它整支失效，而且 hook 是安靜失效。
+- 使用者的 SPEC.md 可能是 CRLF：迴圈裡任何「比對整行」的地方都要先去掉 `\r`。
 
 ### bin/unattended --loop —— 每一項一場全新對話
 
