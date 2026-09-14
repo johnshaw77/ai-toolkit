@@ -280,13 +280,33 @@ tmux attach -t claude   # 回來接上
 ### 選配：一鍵啟動腳本
 
 `bin/unattended` 把「建立標記檔 + 開 tmux + 啟動 Claude Code」包成一個指令。
-它**不會自動安裝**（plugin 不能動你的 PATH），要用的話自己接上。
 
-**不要用 `cp` 複製**——複製出去的那份不會跟著 plugin 更新，會一直停在舊版
-（沒有 `--loop` 之類的新功能）。改成連到 plugin 自己的位置，
-`claude plugin update` 之後就自動是新版：
+**裝 plugin 時它就已經在你電腦上了**——`/plugin marketplace add` 會把整個 repo
+clone 到 `~/.claude/plugins/marketplaces/claude-unattended-workflow/`，
+`bin/` 也在裡面，不用另外從 GitHub 下載。只是 plugin 不能動你的 PATH，
+所以要接上一次：
 
-**macOS / Linux / WSL**：
+```
+/unattended:install-bin
+```
+
+它會判斷平台自己處理：
+
+| 平台 | 做法 |
+|---|---|
+| macOS / Linux / WSL | 在 PATH 裡建 symlink；`~/.local/bin` 不在 PATH 就加進 `~/.zshrc`／`~/.bashrc` |
+| Windows（Git Bash） | 在 `~/.bashrc` 加上帶 `--no-tmux` 的 alias（Git Bash 的 `ln -s` 預設是複製） |
+
+一律指向 marketplace 目錄，所以 `claude plugin update` 之後自動就是新版。
+以前用 `cp` 複製過的舊版會被換掉；PATH 裡有不相干的同名檔案則不會覆蓋。
+可以重複執行。有改 rc 檔的話，要開新的終端機才找得到指令。
+
+<details>
+<summary>手動安裝（不想讓指令改 rc 檔的話）</summary>
+
+**不要用 `cp` 複製**——複製出去的那份不會跟著 plugin 更新。
+
+macOS / Linux / WSL：
 
 ```bash
 mkdir -p ~/.local/bin
@@ -294,15 +314,14 @@ ln -sf ~/.claude/plugins/marketplaces/claude-unattended-workflow/bin/unattended 
 # 確認 ~/.local/bin 在 PATH 裡，沒有的話加進 ~/.zshrc
 ```
 
-以前用 `cp` 裝過的，重跑上面那行 `ln -sf` 就會蓋掉舊的。
-
-**Windows（Git Bash）**：Git Bash 的 `ln -s` 預設會變成複製，一樣會停在舊版。
-改成在 `~/.bashrc` 加一個 alias，直接呼叫 plugin 裡的那份：
+Windows（Git Bash）：
 
 ```bash
 echo "alias unattended='bash ~/.claude/plugins/marketplaces/claude-unattended-workflow/bin/unattended --no-tmux'" >> ~/.bashrc
 source ~/.bashrc
 ```
+
+</details>
 
 然後：
 
@@ -426,8 +445,10 @@ commands/
   spec.md                 /unattended:spec
   mode.md                 /unattended:mode
   transcripts.md          /unattended:transcripts
+  install-bin.md          /unattended:install-bin
 scripts/
   transcript2html.py      JSONL → HTML（純標準庫）
+  install-bin.sh          把 bin/unattended 接上 PATH（/unattended:install-bin 呼叫）
 bin/
   unattended              選配：一鍵啟動／--loop 每項一場新對話（需自行放進 PATH）
 ```

@@ -59,7 +59,7 @@ python3 scripts/transcript2html.py --index             # 只重建全域索引
 
 ## 架構
 
-三個 hook + 三個指令 + 一支轉檔腳本，靠**兩個標記檔**串起來：
+三個 hook + 四個指令 + 兩支腳本（轉檔、安裝），靠**兩個標記檔**串起來：
 
 ```
 .claude/UNATTENDED        存在 ＝ 無人值守模式
@@ -69,7 +69,7 @@ python3 scripts/transcript2html.py --index             # 只重建全域索引
 <專案>/docs/transcripts/  存在 ＝ 自動存檔已啟用
   建立者：/unattended:transcripts、/unattended:mode（開啟時順手建）
   內含 .gitignore（`*`）＝ 預設不進版控。由 transcript2html.py --here 每次確保存在，
-  所以所有寫入路徑（hook 與三個指令）都自動帶到；已存在就不覆寫
+  所以所有寫入路徑（hook 與 /spec、/mode、/transcripts）都自動帶到；已存在就不覆寫
   讀取者：hooks/archive-transcript.sh（Stop 與 SessionEnd 各註冊一次）
 ```
 
@@ -161,7 +161,13 @@ stdout 只能有回傳給 Claude Code 的那一包 JSON，所以 fd 1 整個導�
   沒有 tmux 時走 `--no-tmux`（前景執行）——新增依賴 tmux 的功能時，
   `--no-tmux` 那條路徑要跟著支援。
 - **安裝方式是 symlink／alias 指向 marketplace 目錄，不是 `cp`**：複製出去的副本
-  不會跟著 `claude plugin update` 更新。
+  不會跟著 `claude plugin update` 更新。實作在 `scripts/install-bin.sh`
+  （`/unattended:install-bin` 呼叫）：來源從 `known_marketplaces.json` 的
+  `installLocation` 找，**不能用 `CLAUDE_PLUGIN_ROOT`**——那是帶版號的快取目錄，
+  下次更新就斷。覆蓋既有檔案前一定檢查內容含 `SCRIPT_SIGNATURE`（`bin/unattended`
+  第 2 行的註解），改那行註解時兩邊要一起改。
+  測試用 `UNATTENDED_INSTALL_PLATFORM=darwin|linux|gitbash` 加上假的 `HOME`、
+  `CLAUDE_CONFIG_DIR`、`PATH`，不要對真的家目錄跑。
 - `.gitattributes` 把 `*.sh`、`bin/unattended` 固定 LF。新增 bash 腳本若不是 `.sh`
   副檔名，要加進去——Windows 的 autocrlf 會讓它整支失效，而且 hook 是安靜失效。
 - 使用者的 SPEC.md 可能是 CRLF：迴圈裡任何「比對整行」的地方都要先去掉 `\r`。

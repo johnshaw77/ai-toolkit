@@ -152,6 +152,17 @@ rm .claude/UNATTENDED  # 或直接刪
 
 ---
 
+## `unattended` 指令找不到或是舊版
+
+| 症狀 | 原因與處理 |
+|---|---|
+| `command not found: unattended` | 還沒接上 PATH。跑 `/unattended:install-bin`。跑過了還找不到 → 它改了 rc 檔，要**開新的終端機** |
+| 有指令但沒有 `--loop`／`--no-tmux` | 以前用 `cp` 複製的舊版，不會跟著更新。跑 `/unattended:install-bin`，它會換成 symlink |
+| install-bin 說「PATH 裡已經有一個不相干的 unattended」 | 別的程式也叫這個名字，腳本刻意不覆蓋。改名或移除那個檔案再跑一次 |
+| 更新 plugin 之後 `unattended` 還是舊行為 | symlink 指向 marketplace 目錄，要先 `claude plugin update unattended` 才會 pull。確認：`ls -l "$(command -v unattended)"` |
+
+---
+
 ## `unattended --loop` 行為不如預期
 
 | 症狀 | 原因 |
@@ -177,7 +188,7 @@ rm .claude/UNATTENDED  # 或直接刪
 | hook 或 `unattended` 報 `$'\r': command not found` | 腳本被 checkout 成 CRLF。0.21.0 起 `.gitattributes` 固定成 LF，但**在那之前就 clone 的副本不一定會自動修正**。先在 `~/.claude/plugins/marketplaces/claude-unattended-workflow` 執行 `git rm --cached -r . -q && git reset --hard`，再 `/plugin uninstall unattended`、`/plugin install unattended` 讓快取重新複製，然後重開 Claude Code |
 | `✗ 沒有安裝 tmux` | 原生 Windows 沒有 tmux。加 `--no-tmux`，或改用 WSL |
 | 無人值守跑到一半整個停住，沒有任何錯誤 | 電腦睡眠了。設定 → 系統 → 電源，接電源時睡眠改成「永不」 |
-| `unattended` 還是舊版（沒有 `--loop`） | 用 `cp` 或 Git Bash 的 `ln -s`（預設是複製）裝的。改用 README 裡的 alias 直接呼叫 plugin 那份 |
+| `unattended` 還是舊版（沒有 `--loop`） | 用 `cp` 或 Git Bash 的 `ln -s`（預設是複製）裝的。跑一次 `/unattended:install-bin` 換成 alias |
 | hook 完全沒作用、也沒有 jq 的提示 | Claude Code 找不到 Git Bash，改用 PowerShell 跑 hook。裝 Git for Windows，必要時設定 `CLAUDE_CODE_GIT_BASH_PATH` 指到 `bash.exe` |
 | 對話存檔沒產生 | Python 叫 `python` 不叫 `python3` 已經處理；確認 `python --version` 能跑，而不是跳出 Microsoft Store |
 | SPEC.md 用 Windows 編輯器存成 CRLF | 不影響：迴圈計數與跳過都有處理 `\r` |

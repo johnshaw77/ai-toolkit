@@ -174,7 +174,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/transcript2html.py" --here
 
    項目多、預期會跑很久的話，另外提一句可以改用
    `unattended --loop`：每一項開一場全新的對話，脈絡不會愈跑愈髒
-   （需要先裝 `bin/unattended`，見 README）。這條路不用 `/clear`——每一輪本來就是乾淨的。
+   （沒裝過 `unattended` 指令的話先跑 `/unattended:install-bin`）。這條路不用 `/clear`——每一輪本來就是乾淨的。
 
 ### 為什麼要先 /clear
 
