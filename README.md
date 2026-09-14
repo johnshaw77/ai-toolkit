@@ -97,6 +97,9 @@ Windows 上的其他注意事項：
   留在主線，因為證據要留在使用者翻得到的紀錄裡。
 - **Git**：互動開發時不自己 commit，永遠不自己 push。commit 訊息（含標題）
   一律繁體中文，技術名詞保留原文。
+- **脈絡壓縮後先重讀檔案**：自動壓縮之後（SessionStart 的 source 是 `compact`）
+  追加一段提醒——先讀 `SPEC.md` 勾選狀態、`git log`、`docs/DECISIONS.md`
+  再繼續，摘要和檔案對不上時以檔案為準。
 
 > Plugin 無法寫入你的 `~/.claude/CLAUDE.md`，所以改用 SessionStart hook 注入，
 > 效果相同。你自己的 CLAUDE.md 仍然有效，兩者會疊加。
@@ -191,7 +194,8 @@ Claude 想結束回合時攔一次，檢查三件事：
 | commit | 不自動做 | 每完成一項 + 測試綠就 commit |
 | 分支 | 你決定 | 一定在 `feat/*`，不動 `main` |
 | push | 要你明說 | 永遠不做 |
-| 卡住 | 問你 | 試兩次就跳過，最後在 README 說明 |
+| 卡住 | 問你 | 試兩次就跳過（SPEC.md 標 `- [-]`），最後在 README 說明 |
+| 進度 | — | 完成一項就把 SPEC.md 那行改成 `- [x]`，跟實作同一個 commit |
 
 開啟時它會順手做兩件事，因為那是最後一次能打擾你的時機：
 
@@ -290,9 +294,48 @@ tmux attach -t claude-<專案>      # 進去貼任務
 ```
 
 它會先檢查 tmux 與 claude 存在、session 沒重複、目前不在 `main` 上，
-並在 claude 結束時自動清掉標記檔。
+並在 claude 結束時自動清掉標記檔。標記檔會順手寫進 `.git/info/exclude`，
+不會被 commit。
 
 不裝也完全沒差——`/unattended:mode` 指令加上手動開 tmux 是一樣的效果。
+
+### 迴圈模式：每一項一場全新對話
+
+無人值守時沒有人能 `/clear`，一場對話跑十項，後面幾項是在壓縮過好幾次的脈絡下
+做的——摘要會漏掉被否決的做法、某段程式為什麼那樣寫。`--loop` 把 SPEC.md 的
+**每一項拆成一場全新的 `claude -p` 對話**，等於每項之間自動 `/clear`：
+
+```bash
+cd <專案>
+git checkout -b feat/xxx
+unattended --loop                             # 讀 SPEC.md，一項一場
+unattended --loop "備註" -- --model sonnet    # -- 之後的參數原樣交給 claude
+```
+
+| 情況 | 迴圈怎麼做 |
+|---|---|
+| 這一輪讓沒打勾的項目變少 | 算有進展，下一輪做下一個 `- [ ]` |
+| 沒變少 | 同一項再給一輪；**連續兩輪**都沒進展就改成 `- [-]`、commit、跳過 |
+| `claude` 異常結束（額度用完、斷網） | 不算卡住，等 5、10 分鐘重試同一項；連續 3 次就停 |
+| 全部處理完 | 再開一場收尾：README「未完成事項」、回報完成／跳過／commit |
+
+需要的前提：
+
+- **SPEC.md 用核取方塊格式**（`/unattended:spec` 產出的就是）：每項標題行頂格
+  寫 `- [ ] **F1** …`，完成條件縮排、不用核取方塊。迴圈只數頂格的 `- [ ] `。
+- 是 git repo——跳過與進度都靠 commit。
+- 過程寫在 `.claude/unattended-loop.log`（同樣進 `.git/info/exclude`）；
+  有開對話存檔的話 `docs/transcripts/` 每一輪都會多一場。
+
+⚠️ 迴圈用 `--permission-mode bypassPermissions` 跑——`-p` 模式沒有人能按
+「允許」，不這樣就會卡在第一個權限詢問。只在你信任的專案、分支上用。
+
+| | 單場（`unattended`） | 迴圈（`unattended --loop`） |
+|---|---|---|
+| 脈絡 | 一路累積，靠自動壓縮 | 每項重新開始 |
+| 看它邊做邊想 | `tmux attach` 即時看 | 只看得到每輪最後輸出；過程看 transcripts |
+| 任務怎麼給 | 接上去貼 | 不用給，SPEC.md 就是任務 |
+| 適合 | 3–5 項、彼此緊密相關 | 項目多、跑一整晚 |
 
 ## 進階：前後端平行開發
 
@@ -307,7 +350,8 @@ plugin 本身沒有為此新增功能。多數 side project 其實不值得拆�
 - [ ] 讀完、確認過之後**跑了 `/clear`**（談規格的脈絡對執行只有害處）
 - [ ] 任務有**客觀的**完成條件（測試全綠 / 某個檔案產出）
 - [ ] `docs/transcripts/` 存在（`/spec` 或 `/mode` 會順手建；沒有就跑 `/transcripts`）
-- [ ] 已 `/unattended:mode <備註>` 開啟無人值守
+- [ ] 已 `/unattended:mode <備註>` 開啟無人值守（或用 `unattended --loop`，這條就不必）
+- [ ] SPEC.md 每項是頂格的 `- [ ] **F1** …`（進度靠勾選，`--loop` 必要）
 - [ ] 在分支上，不是 `main`
 - [ ] dev server 的 port 沒被別的服務佔用（**驗證時先確認 `<title>` 是自己的專案**）
 
@@ -341,13 +385,13 @@ commands/
 scripts/
   transcript2html.py      JSONL → HTML（純標準庫）
 bin/
-  unattended              選配：一鍵啟動（需自行放進 PATH）
+  unattended              選配：一鍵啟動／--loop 每項一場新對話（需自行放進 PATH）
 ```
 
 ## 遇到問題
 
 看 [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md)：守門員沒擋、改了 plugin
-沒生效、**埠口衝突導致驗證假通過**、存檔沒產生、無人值守關不掉。
+沒生效、**埠口衝突導致驗證假通過**、存檔沒產生、無人值守關不掉、`--loop` 行為不如預期。
 
 ## 授權
 

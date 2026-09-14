@@ -21,6 +21,8 @@ fi
 
 cwd=$(printf '%s' "$input" | jq -r '.cwd // ""' 2>/dev/null)
 [ -n "$cwd" ] || cwd="$PWD"
+# startup / resume / clear / compact。compact 時要追加「先重讀檔案」的提醒。
+source_kind=$(printf '%s' "$input" | jq -r '.source // ""' 2>/dev/null)
 
 base='## 決策：自己判斷，但先確認做的是對的東西
 
@@ -161,9 +163,13 @@ if [ -f "$marker" ]; then
    這條**覆蓋上面的「動工前要先對齊範圍」**——使用者此刻不在，SPEC.md 就是
    已經對齊過的範圍；沒有 SPEC.md 就依現有文件做最合理的推斷並寫進 DECISIONS。
 2. 每完成一個功能項目、且測試全綠時 commit 一次。切分點是功能項目，不是檔案。
+   SPEC.md 的項目是 `- [ ] **F1** …` 格式：完成時把那行改成 `- [x]`，
+   **跟實作放在同一個 commit**。進度要寫在檔案裡，不能只存在脈絡裡——
+   脈絡會被壓縮，`unattended --loop` 更是每項都開一場全新對話，只看得到檔案。
 3. 在分支上做（feat/<項目>），不要直接動 main。
 4. 永遠不要 push。
-5. 卡住超過兩次嘗試就跳過該項、繼續下一項，最後在 README 的「未完成事項」說明。
+5. 卡住超過兩次嘗試就跳過該項（SPEC.md 那行改成 `- [-]`）、繼續下一項，
+   最後在 README 的「未完成事項」說明。
 6. 全部做完後回報：完成什麼、跳過什麼、產生哪些 commit。
 
 結束無人值守：刪掉 .claude/UNATTENDED。'
@@ -171,6 +177,23 @@ if [ -f "$marker" ]; then
 
 本次任務備註：$note"
   base="$base$extra"
+fi
+
+if [ "$source_kind" = "compact" ]; then
+  base="$base
+
+---
+
+🗜 【剛剛發生了脈絡壓縮】
+
+你手上的是摘要，不是原本的對話——被否決過的做法、某段程式為什麼那樣寫、
+做到哪一步，都可能被漏掉或記錯。繼續之前**先重讀檔案，不要憑摘要接著做**：
+
+1. \`SPEC.md\`（若存在）：看勾選狀態，\`- [ ]\` 才是還沒做的。
+2. \`git log --oneline -20\` 與 \`git status\`：實際做到哪、有沒有做到一半沒 commit 的改動。
+3. \`docs/DECISIONS.md\` 最後幾條（若存在）：前面做過的取捨，不要推翻它們。
+
+摘要和檔案對不上時，**以檔案為準**。"
 fi
 
 jq -n --arg c "$base" \

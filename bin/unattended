@@ -1,30 +1,185 @@
 #!/usr/bin/env bash
 # 啟動一次「無人值守」的 Claude Code 執行。
 #
-#   unattended "把 SPEC.md 的六項功能做完"
-#   unattended                          # 不給備註也可以
+#   unattended "把 SPEC.md 的六項功能做完"     單場模式：開 tmux + claude，接上去貼任務
+#   unattended                                 不給備註也可以
+#   unattended --loop ["備註"] [-- claude 參數]  迴圈模式：SPEC.md 每一項開一場全新對話
 #
-# 它會做三件事：
+# 單場模式做三件事：
 #   1. 在專案建立 .claude/UNATTENDED 標記（SessionStart hook 會讀到）
 #   2. 開一個 tmux session，讓它不會因為你關掉視窗而中斷
 #   3. 在裡面啟動 Claude Code
 #
+# 迴圈模式把第 3 步換成：只要 SPEC.md 還有頂格的 `- [ ] `，就用 `claude -p` 開一場
+# 全新的對話做第一項。每一輪都是乾淨的脈絡——這是無人值守時唯一等同 /clear 的辦法。
+#   - 沒打勾的數量沒減少 = 沒進展；同一項連續兩輪沒進展就改成 `- [-]` 跳過
+#   - claude 本身失敗（額度用完、斷網）不算沒進展，等一下重試，連續失敗 3 次才停
+#   - 全部處理完再開一場收尾（README 未完成事項、回報）
+#   - 過程寫進 .claude/unattended-loop.log
+#
 # 結束後標記會自動清掉。
 set -uo pipefail
 
-NOTE="${1:-}"
+SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+LOG_NAME=".claude/unattended-loop.log"
+
+# ─────────────────────────── 迴圈本體（在 tmux 裡跑） ───────────────────────────
+
+open_count() {
+  local n
+  n=$(grep -cE '^- \[ \] ' SPEC.md 2>/dev/null)
+  printf '%s' "${n:-0}"
+}
+
+loop_worker() {
+  local proj=$1 note=$2
+  shift 2
+  cd "$proj" || exit 1
+  local log="$proj/$LOG_NAME"
+  # marker 不能用 local：EXIT trap 是在函式返回之後才執行，那時 local 變數已經不在了，
+  # 會變成 rm -f ""，標記檔殘留，那個專案之後每場對話都是無人值守。
+  UNATTENDED_MARKER="$proj/.claude/UNATTENDED"
+  trap 'rm -f "$UNATTENDED_MARKER"' EXIT
+  # 從 Claude Code 裡（例如 `!` 指令）啟動時會帶著這個變數，巢狀的 claude 會拒絕啟動。
+  unset CLAUDECODE
+
+  local start_head total max round=0 stuck=0 fails=0
+  start_head=$(git rev-parse --short HEAD 2>/dev/null || echo "")
+  total=$(open_count)
+  max=$(( total * 3 + 2 ))     # 保險絲：正常最多 total×2 輪（含跳過），多留一點給失敗重試
+
+  say() { printf '%s\n' "$*" | tee -a "$log"; }
+  say ""
+  say "════ 無人值守迴圈開始 $(date '+%F %T') ・ 待辦 $total 項 ・ 起點 ${start_head:-（無 commit）}"
+
+  while [ "$(open_count)" -gt 0 ]; do
+    round=$((round + 1))
+    if [ "$round" -gt "$max" ]; then
+      say "✗ 超過 $max 輪上限，停止。可能有項目反覆失敗但沒被判定為卡住，請看 log。"
+      break
+    fi
+
+    local before item prompt rc
+    before=$(open_count)
+    item=$(grep -m1 -E '^- \[ \] ' SPEC.md)
+    say ""
+    say "──── 第 $round 輪 $(date '+%F %T') ・ 剩 $before 項"
+    say "     $item"
+
+    prompt="【無人值守迴圈・第 $round 輪】這一輪是全新的對話，你沒有前面幾輪的記憶。
+
+1. 先讀 SPEC.md、\`git log --oneline -20\`、\`git status\`，以及 docs/DECISIONS.md（若有），弄清楚前面做到哪。
+2. 只做 SPEC.md 裡**第一個** \`- [ ]\` 項目，不要動其他項目：
+   $item
+3. 達到這一項的完成條件、以及 SPEC.md「完成的定義」之後，把那一行改成 \`- [x]\`，
+   跟實作放在**同一個 commit**。
+4. 做不到就**不要打勾**。把卡在哪、試過什麼追加到 docs/DECISIONS.md，commit 之後結束。
+   迴圈會再給一輪；連續兩輪沒進展會自動把它標成 \`- [-]\` 跳過。
+5. 這一項處理完就結束，不要接著做下一項。
+
+這份指示覆蓋無人值守準則的第 5、6 條：跳過與最終回報由迴圈負責。"
+    [ -n "$note" ] && prompt="$prompt
+
+本次任務備註：$note"
+
+    claude -p "$prompt" --permission-mode bypassPermissions "$@" 2>&1 | tee -a "$log"
+    rc=${PIPESTATUS[0]}
+
+    if [ "$(open_count)" -lt "$before" ]; then
+      say "✓ 第 $round 輪有進展"
+      stuck=0; fails=0
+      continue
+    fi
+
+    if [ "$rc" -ne 0 ]; then
+      # 額度用完、斷網、認證過期——不是這一項的錯，不要拿它算卡住。
+      fails=$((fails + 1))
+      round=$((round - 1))
+      if [ "$fails" -ge 3 ]; then
+        say "✗ claude 連續 $fails 次異常結束（exit ${rc}），停止迴圈。原因看上面的輸出。"
+        break
+      fi
+      say "⚠ claude 異常結束（exit ${rc}），$((fails * 5)) 分鐘後重試同一項"
+      sleep $((fails * 300))
+      continue
+    fi
+    fails=0
+
+    stuck=$((stuck + 1))
+    if [ "$stuck" -lt 2 ]; then
+      say "… 第 $round 輪沒有進展，同一項再試一輪"
+      continue
+    fi
+
+    # 連續兩輪沒進展 → 跳過。用 awk 比對整行，避免項目文字裡的特殊字元被當成 regex。
+    local tmp
+    tmp=$(mktemp)
+    awk -v it="$item" '
+      !done && $0 == it { sub(/^- \[ \] /, "- [-] "); $0 = $0 "（迴圈自動跳過：連續兩輪沒有進展，見 .claude/unattended-loop.log）"; done = 1 }
+      { print }' SPEC.md > "$tmp" && cat "$tmp" > SPEC.md
+    rm -f "$tmp"
+    git add SPEC.md >/dev/null 2>&1 && git commit -q -m "跳過卡住的項目：${item#- \[ \] }" -- SPEC.md >/dev/null 2>&1
+    say "⤼ 連續兩輪沒有進展，已標成 - [-] 並跳過"
+    stuck=0
+  done
+
+  if [ "$(open_count)" -eq 0 ]; then
+    say ""
+    say "──── 收尾 $(date '+%F %T')"
+    claude -p "【無人值守迴圈・收尾】SPEC.md 的項目都處理過了（\`- [x]\` 完成、\`- [-]\` 跳過）。這是全新的對話。
+
+1. 讀 SPEC.md，以及這一輪的 \`git log --oneline ${start_head:+$start_head..HEAD}\`。
+2. 有 \`- [-]\` 的話，在 README 的「未完成事項」說明每一項卡在哪、試過什麼
+   （線索在 docs/DECISIONS.md 與 ${LOG_NAME}）。
+3. **不要再實作任何項目。** 有改檔就 commit。
+4. 最後回報：完成什麼、跳過什麼、產生哪些 commit。" \
+      --permission-mode bypassPermissions "$@" 2>&1 | tee -a "$log"
+  fi
+
+  say ""
+  say "════ 迴圈結束 $(date '+%F %T')"
+  say "     完成 $(grep -cE '^- \[x\] ' SPEC.md 2>/dev/null) 項 ・ 跳過 $(grep -cE '^- \[-\] ' SPEC.md 2>/dev/null) 項 ・ 未處理 $(open_count) 項"
+  [ -n "$start_head" ] && git log --oneline "$start_head..HEAD" 2>/dev/null | tee -a "$log"
+}
+
+if [ "${1:-}" = "__loop-worker" ]; then
+  shift
+  loop_worker "$@"
+  exit $?
+fi
+
+# ─────────────────────────── 啟動器 ───────────────────────────
+
+LOOP=0
+if [ "${1:-}" = "--loop" ]; then LOOP=1; shift; fi
+NOTE=""
+if [ $# -gt 0 ] && [ "$1" != "--" ]; then NOTE="$1"; shift; fi
+[ "${1:-}" = "--" ] && shift
+CLAUDE_ARGS=("$@")
 PROJ="$PWD"
-NAME="claude-$(basename "$PROJ" | tr -c 'a-zA-Z0-9_-' '-')"
+# printf 而不是直接 pipe basename：它的結尾換行會被 tr 換成多出來的「-」
+NAME="claude-$(printf '%s' "$(basename "$PROJ")" | tr -c 'a-zA-Z0-9_-' '-')"
 
 # --- 前置檢查 ---
 command -v tmux >/dev/null || { echo "✗ 沒有安裝 tmux：brew install tmux"; exit 1; }
 command -v claude >/dev/null || { echo "✗ 找不到 claude 指令"; exit 1; }
 
 if tmux has-session -t "$NAME" 2>/dev/null; then
-  echo "✗ session「$NAME」已經在跑了。"
+  echo "✗ session「${NAME}」已經在跑了。"
   echo "  接上： tmux attach -t $NAME"
   echo "  關掉： tmux kill-session -t $NAME"
   exit 1
+fi
+
+if [ "$LOOP" = 1 ]; then
+  [ -f "$PROJ/SPEC.md" ] || { echo "✗ 迴圈模式需要 SPEC.md（先跑 /unattended:spec）"; exit 1; }
+  if [ "$(cd "$PROJ" && open_count)" -eq 0 ]; then
+    echo "✗ SPEC.md 裡沒有頂格的「- [ ] 」項目，迴圈沒東西可做。"
+    echo "  格式見 /unattended:spec；舊格式的 SPEC.md 要先把每項改成「- [ ] **F1** …」。"
+    exit 1
+  fi
+  git -C "$PROJ" rev-parse --git-dir >/dev/null 2>&1 || {
+    echo "✗ 迴圈模式需要 git：進度判斷與跳過都靠 commit。先 git init。"; exit 1; }
 fi
 
 if git -C "$PROJ" rev-parse --git-dir >/dev/null 2>&1; then
@@ -38,6 +193,14 @@ if git -C "$PROJ" rev-parse --git-dir >/dev/null 2>&1; then
       [ "$ans" = "y" ] || [ "$ans" = "Y" ] || exit 1
       ;;
   esac
+  # 標記檔與迴圈 log 不該被 commit（別人 clone 下來就變成無人值守）。
+  # 寫進 .git/info/exclude 而不是 .gitignore：只影響本機，不改專案檔案。
+  exclude="$(git -C "$PROJ" rev-parse --git-path info/exclude)"
+  case "$exclude" in /*) ;; *) exclude="$PROJ/$exclude" ;; esac
+  mkdir -p "$(dirname "$exclude")"
+  for pat in ".claude/UNATTENDED" "$LOG_NAME"; do
+    grep -qxF "$pat" "$exclude" 2>/dev/null || printf '%s\n' "$pat" >> "$exclude"
+  done
 fi
 
 # --- 建立標記 ---
@@ -45,10 +208,34 @@ mkdir -p "$PROJ/.claude"
 printf '%s\n' "$NOTE" > "$PROJ/.claude/UNATTENDED"
 
 # --- 開 tmux 並啟動，結束後自動清掉標記 ---
-tmux new-session -d -s "$NAME" -c "$PROJ" \
-  "claude; rm -f '$PROJ/.claude/UNATTENDED'"
+if [ "$LOOP" = 1 ]; then
+  cmd=$(printf '%q ' bash "$SELF" __loop-worker "$PROJ" "$NOTE" ${CLAUDE_ARGS[@]+"${CLAUDE_ARGS[@]}"})
+  # 跑完停在 shell，讓你接上時還看得到最後的總結
+  tmux new-session -d -s "$NAME" -c "$PROJ" "$cmd; echo; echo '（迴圈已結束，按 Enter 關閉）'; read -r"
+else
+  tmux new-session -d -s "$NAME" -c "$PROJ" \
+    "claude; rm -f '$PROJ/.claude/UNATTENDED'"
+fi
 
-cat <<EOF
+if [ "$LOOP" = 1 ]; then
+  cat <<EOF
+✓ 無人值守迴圈已啟動（每一項一場全新對話）
+
+  session   $NAME
+  專案      $PROJ
+  待辦      $(cd "$PROJ" && open_count) 項
+  備註      ${NOTE:-（無）}
+
+  看進度       tmux attach -t $NAME
+               tail -f $PROJ/$LOG_NAME
+               open $PROJ/docs/transcripts/index.html（有啟用存檔的話）
+  走人（脫離） Ctrl+b 放開，再按 d
+  強制結束     tmux kill-session -t $NAME && rm -f '$PROJ/.claude/UNATTENDED'
+
+⚠️  迴圈用 --permission-mode bypassPermissions 跑，不會有任何權限詢問。
+EOF
+else
+  cat <<EOF
 ✓ 無人值守已啟動
 
   session   $NAME
@@ -61,3 +248,4 @@ cat <<EOF
 
 現在接上去把任務貼給它。
 EOF
+fi

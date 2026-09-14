@@ -149,3 +149,21 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/transcript2html.py" --here
 /unattended:mode off        # 關
 rm .claude/UNATTENDED  # 或直接刪
 ```
+
+---
+
+## `unattended --loop` 行為不如預期
+
+| 症狀 | 原因 |
+|---|---|
+| 「SPEC.md 裡沒有頂格的 `- [ ] ` 項目」 | 舊格式的 SPEC.md（`## F1` 標題、沒有核取方塊）。把每項標題改成頂格 `- [ ] **F1** …`，或重跑 `/unattended:spec` |
+| 項目明明做完了還一直重跑、最後被標 `- [-]` | 執行者沒把那行改成 `- [x]`。迴圈**只看勾選**，不看 commit 或測試。看 log 裡那一輪最後的輸出 |
+| 一項都還沒做就被跳過 | 完成條件寫得做不到（外部服務、需要權限），或缺縮排讓完成條件也被當成項目。把完成條件縮排並改成一般 `-` |
+| 項目數算錯 | 完成條件用了核取方塊又沒縮排。迴圈的判斷是 `grep -cE '^- \[ \] '`，只有頂格才算 |
+| 「claude 連續 3 次異常結束」 | 額度用完、網路斷線或登入過期。看 log 最後的錯誤，處理後重跑 `unattended --loop`，已打勾的項目不會重做 |
+| 「超過 N 輪上限」 | 保險絲：待辦數 ×3 + 2 輪。正常每項最多兩輪，超過代表 SPEC.md 在迴圈中被改過（例如執行者自己加了新的 `- [ ]` 項目），看 log 與 `git log -p SPEC.md` |
+| 每一輪都卡在權限詢問 | 不會發生——迴圈固定帶 `--permission-mode bypassPermissions`。如果你在 `--` 之後又傳了別的 `--permission-mode`，拿掉它 |
+| 看不到它在想什麼 | `-p` 模式只印最後的回覆。過程看 `docs/transcripts/index.html`（Stop hook 每輪都會更新） |
+
+迴圈中途想停：`tmux kill-session -t claude-<專案>`，然後確認 `.claude/UNATTENDED`
+已刪（被強制砍掉時可能殘留，見上一節）。

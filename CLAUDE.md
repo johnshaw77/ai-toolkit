@@ -159,6 +159,27 @@ stdout 只能有回傳給 Claude Code 的那一包 JSON，所以 fd 1 整個導�
 - Windows 沒有 `tmux`，所以 `bin/unattended` 是**選配**、不自動安裝
   （plugin 不能動使用者的 PATH）。核心功能不可以依賴它。
 
+### bin/unattended --loop —— 每一項一場全新對話
+
+同一支腳本兼任啟動器與迴圈本體：啟動器檢查完後，tmux 裡跑的是
+`bash <自己> __loop-worker <專案> <備註> [claude 參數]`。
+
+- **進度只看 SPEC.md 頂格 `- [ ] ` 的數量**（`open_count`）。這個格式同時寫在
+  `commands/spec.md`（產出端）、`session-start.sh` 無人值守準則第 2、5 條（執行端）
+  和這支腳本（判斷端）——三處要一起改。
+- **`claude` 非 0 結束不算卡住**：額度用完時如果照樣累積 stuck，一晚上會把所有
+  項目都標成跳過。所以先判斷有沒有進展，再判斷 exit code，最後才算 stuck。
+- 跳過用 awk 比對整行（`$0 == it`），不要改成 sed——項目文字常有 `` ` ``、`*`、`/`。
+- **變數後面緊接中文一律寫 `${var}`**：macOS 內建的 bash 3.2 會把全形字元的
+  位元組吃進變數名（`$LOG_NAME）` 變成讀 `LOG_NAME\xef…`），配上 `set -u` 直接中止
+  那一行——收尾那場 `claude -p` 曾經因此完全沒被呼叫，而且 log 裡看不到錯誤。
+  檢查：`LC_ALL=C grep -nE '\$[A-Za-z_][A-Za-z0-9_]*[^ -~]' bin/unattended hooks/*.sh`
+- EXIT trap 用到的變數不能是 `local`：trap 在函式返回後才跑，local 已經消失。
+- worker 開頭 `unset CLAUDECODE`：從 Claude Code 裡啟動時帶著這個變數，
+  巢狀的 claude 會拒絕執行。
+- 改這支腳本時不要動到**正在跑的迴圈**用的那份檔案：bash 是邊讀邊執行的，
+  中途改檔可能讓跑到一半的迴圈讀到錯位的內容。
+
 ## 慣例
 
 - **這個 repo 可以直接 commit 到 `main`，不必先開分支。** 單人維護，而且 plugin
