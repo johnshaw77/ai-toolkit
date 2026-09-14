@@ -31,53 +31,146 @@
 
 ## 安裝
 
+照順序做，大約 5 分鐘。
+
+### 步驟 0：確認你的環境走哪一條
+
+| # | 環境 | 建議 | 能用的功能 |
+|---:|---|---|---|
+| 1 | macOS | 直接裝 | 全部 |
+| 2 | Linux | 直接裝 | 全部 |
+| 3 | Windows + WSL | Claude Code 與專案都放在 WSL 裡，當成 Linux 裝 | 全部 |
+| 4 | Windows 原生 | Git Bash + `--no-tmux` | 全部，但無人值守時視窗不能關、電腦不能睡 |
+
+> Windows 原生這條路目前是依腳本內容推斷並在 macOS 上模擬驗證，**尚未在 Windows
+> 實機跑過**。踩到問題請回報，或補進 `docs/TROUBLESHOOTING.md` 的 Windows 那節。
+
+### 步驟 1：裝相依工具
+
+| # | 工具 | 用途 | 沒有的話 |
+|---:|---|---|---|
+| 1 | `bash` | 三個 hook 都是 bash 腳本 | **完全不會運作** |
+| 2 | `jq` | hook 解析輸入、輸出 JSON | **完全不會運作**（對話開始時會顯示提示） |
+| 3 | `python3` 或 `python` | 對話紀錄轉 HTML（只用標準庫，不必 `pip install`） | 只有存檔失效，其餘正常 |
+| 4 | `tmux` | `unattended` 指令在背景跑、可以脫離再接上 | 改用 `--no-tmux` 前景執行 |
+
+**macOS**：
+
+```bash
+brew install jq tmux
+```
+
+`python3` 通常已經有了（裝過 Xcode Command Line Tools 就有）；沒有的話 `brew install python`。
+
+**Linux / WSL**（Debian、Ubuntu）：
+
+```bash
+sudo apt install jq tmux python3
+```
+
+**Windows 原生**（PowerShell）：
+
+```powershell
+winget install Git.Git          # 提供 Git Bash——plugin 的 hook 必須靠它執行
+winget install jqlang.jq
+winget install Python.Python.3.12
+```
+
+裝完**重開終端機**，確認三個都找得到：
+
+```bash
+jq --version && (python3 --version || python --version) && bash --version | head -1
+```
+
+Windows 上 `python --version` 如果跳出 Microsoft Store，代表 Python 沒裝好——
+到「設定 → 應用程式 → 進階應用程式設定 → 應用程式執行別名」把 `python.exe`
+的商店別名關掉。
+
+### 步驟 2：安裝 plugin
+
+在 Claude Code 裡輸入：
+
 ```
 /plugin marketplace add johnshaw77/claude-unattended-workflow
 /plugin install unattended
 ```
 
-裝完**重開 Claude Code**（hook 設定在對話開始時載入）。
+然後**完全關掉 Claude Code 再重開**——hook 是在對話開始時載入的，不重開不會生效。
 
-### 系統需求
-
-| 需要 | 為什麼 | 沒有的話 |
-|---|---|---|
-| `bash` | 三個 hook 都是 bash 腳本 | **完全不會運作** |
-| `jq` | hook 解析輸入、輸出 JSON | **完全不會運作**（會顯示提示訊息） |
-| `python3` 或 `python` | 對話紀錄轉 HTML | 只有存檔功能失效，其餘正常 |
-| `tmux` | 選配的 `bin/unattended` | 那支腳本加 `--no-tmux` 改在前景執行；其餘不受影響 |
-
-轉檔只用 Python 標準庫，不必 `pip install`。
-
-**macOS / Linux**：`bash` 內建，其餘用套件管理員裝。
+確認有裝好：
 
 ```bash
-brew install jq          # macOS
-sudo apt install jq      # Debian/Ubuntu
+claude plugin list        # 應該看到 unattended@claude-unattended-workflow，Status: ✔ enabled
 ```
 
-**Windows**：Claude Code 在沒有 Git Bash 時會用 PowerShell 跑 hook，
-而本 plugin 的 hook 是 bash 腳本，所以**必須有 Git Bash**（裝
-[Git for Windows](https://git-scm.com/download/win) 就有，多數開發者已經有了）。
+重開後在 Claude Code 輸入 `/unattended:`，應該會列出 `spec`、`mode`、
+`transcripts`、`install-bin` 四個指令。
 
-```powershell
-winget install Git.Git          # 提供 bash
-winget install jqlang.jq        # 提供 jq
+### 步驟 3：接上 `unattended` 指令（選配，但建議）
+
+`unattended` 是在終端機直接啟動無人值守的指令（`unattended --loop` 可以讓
+SPEC.md 每一項各開一場全新對話）。裝 plugin 時它已經下載到你電腦上了，
+只是還沒接上 PATH。在 Claude Code 輸入：
+
+```
+/unattended:install-bin
 ```
 
-Windows 上的其他注意事項：
+它會依平台自己處理（macOS／Linux／WSL 建 symlink，Windows 在 `~/.bashrc` 加 alias），
+**完成後開一個新的終端機**，確認：
 
-- Python 通常叫 `python` 而不是 `python3`——plugin 兩個都會試，不用特別處理。
-- **`tmux` 在原生 Windows 上沒有**。`bin/unattended` 在 Git Bash 裡要加
-  `--no-tmux`（見[選配：一鍵啟動腳本](#選配一鍵啟動腳本)）；要完整體驗就用 WSL。
+```bash
+unattended --help
+```
+
+詳細說明見[選配：一鍵啟動腳本](#選配一鍵啟動腳本)。
+
+### 步驟 4（Windows 原生才需要）：關掉睡眠
+
+Windows 預設閒置一段時間就會睡眠，無人值守會整個停住、而且沒有任何錯誤訊息。
+到「設定 → 系統 → 電源」，把**接上電源時**的睡眠改成「永不」。
+
+### 之後怎麼更新
+
+```bash
+claude plugin update unattended
+```
+
+然後重開 Claude Code。`unattended` 指令指向 plugin 的目錄，會跟著一起更新，
+不用重跑 `install-bin`。
+
+更新後沒生效，先確認裝的是哪一版——見 `docs/TROUBLESHOOTING.md`
+的「先確認你裝的是哪一版」。
+
+### 移除
+
+```
+/plugin uninstall unattended
+```
+
+有跑過 `install-bin` 的話，另外刪掉：
+
+- macOS／Linux／WSL：`rm "$(command -v unattended)"`，以及 `~/.zshrc`（或 `~/.bashrc`）裡
+  `# unattended plugin（/unattended:install-bin）` 那一行和它下面一行
+- Windows：`~/.bashrc` 裡同一個標記行和它下面的 `alias unattended=…`
+
+### 裝完之後從哪裡開始
+
+1. 在要做的專案裡開 Claude Code，跑 `/unattended:spec 要做什麼的簡述`，把需求談成 SPEC.md。
+2. 讀過 SPEC.md、改完後 `/clear`。
+3. 開分支，`/unattended:mode 依 SPEC.md 完成全部功能`，或在終端機 `unattended --loop`。
+4. 回來看 `docs/transcripts/index.html`、`docs/DECISIONS.md` 和 git log。
+
+完整說明見上面的[完整流程](#完整流程)與下面的各節。
+
+### Windows 的其他注意事項
+
+- Python 叫 `python` 而不是 `python3`——plugin 兩個都會試，不用特別處理。
+- **原生 Windows 沒有 `tmux`**：`install-bin` 裝的 alias 已經帶 `--no-tmux`。
   `/unattended:mode` 指令本身不受影響。
-- **電腦會睡眠**：Windows 預設閒置一段時間就睡，無人值守會整個停住。
-  跑之前到「設定 → 系統 → 電源」把睡眠改成「永不」（接電源時）。
 - 本 repo 用 `.gitattributes` 把腳本固定成 LF。如果 hook 報
   `$'\r': command not found`，見 `docs/TROUBLESHOOTING.md` 的 Windows 那節。
 - 排錯文件裡的 `lsof` 指令在 Windows 要換成 `netstat -ano | findstr :5173`。
-
-缺 `jq` 時 plugin 不會靜靜失效——它會在對話開始時顯示一則訊息告訴你原因。
 
 ## 它做五件事
 
