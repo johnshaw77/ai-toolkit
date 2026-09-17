@@ -1,0 +1,7 @@
+# 作業系統
+.DS_Store
+
+# 錄影輸出（screencast 每次跑都會整個重建）
+out/
+
+# 各子專案另有自己的 .gitignore（node_modules、.venv、快取等）
