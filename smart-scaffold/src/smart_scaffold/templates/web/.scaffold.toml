@@ -1,0 +1,14 @@
+# 模板自己的設定。**不會**被複製到生成的專案裡。
+
+[optional]
+# 範例領域。預設不產生；`smart-scaffold web --demo` 才會帶上。
+# 共用檔案（api.py、db.py、__main__.py、base.html）裡對應的片段由渲染器的
+# 條件標記處理，寫法見 README 的「模板放在哪」那一節。
+demo = [
+  "src/{{name}}/items.py",
+  "src/{{name}}/templates/items.html",
+  "src/{{name}}/static/items.js",
+  "tests/test_items.py",
+  "tests/test_items_api.py",
+  "tests/e2e/test_items_ui.py",
+]

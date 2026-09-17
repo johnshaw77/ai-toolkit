@@ -1,0 +1,15 @@
+# 模板自己的設定。**不會**被複製到生成的專案裡。
+
+[optional]
+# 範例領域。預設不產生；`smart-scaffold app --demo` 才會帶上。
+# 共用檔案裡對應的片段由渲染器的條件標記處理，寫法見 README。
+demo = [
+  "backend/app/models/item.py",
+  "backend/app/schemas/item.py",
+  "backend/app/repositories/item.py",
+  "backend/app/api/v1/endpoints/items.py",
+  "backend/tests/test_items.py",
+  "frontend/src/api/items.ts",
+  "frontend/src/views/ItemsView.vue",
+  "frontend/e2e/items.e2e.spec.ts",
+]

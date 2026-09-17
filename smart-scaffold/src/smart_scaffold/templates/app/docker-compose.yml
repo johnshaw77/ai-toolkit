@@ -1,0 +1,41 @@
+# 容器版的整套服務。開發時不一定要用它——`make api` 加 `make web` 直接在本機
+# 跑比較快，這裡是給「要跟別人一樣的環境」或「要驗證正式建置」時用的。
+#
+#   docker compose up -d --build   # 起來（第一次會建置映像）
+#   docker compose ps              # 每個服務都要是 running/healthy
+#   docker compose logs -f api     # 看 log
+#
+# 對外的埠跟本機開發用的**刻意錯開**，兩邊可以同時跑。
+# 要換 PostgreSQL 的話多疊一個檔案，見 docker-compose.postgres.yml。
+#
+# 注意：`docker compose down -v` 會連 volume 一起刪掉，資料就沒了。
+
+name: {{name}}
+
+services:
+  api:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      # 預設是容器內的 sqlite，檔案放在掛載的 volume 上才不會隨容器消失。
+      DATABASE_URL: ${DATABASE_URL:-{{container_database_url}}}
+      SECRET_KEY: ${SECRET_KEY:-dev-only-change-me-before-deploying-anywhere-0123456789}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:{{web_container_port}}}
+      # 第一次起來時建好管理員與範例資料。上線環境請設成 0。
+      SEED_ON_START: ${SEED_ON_START:-1}
+    volumes:
+      - api-data:/data
+    ports:
+      - "${API_PORT:-{{api_container_port}}}:8000"
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-{{web_container_port}}}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  api-data:

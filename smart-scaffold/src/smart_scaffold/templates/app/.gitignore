@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+.vite/
+*.local
+
+# unplugin-vue-components 自動產生的型別，每次建置都會重寫
+components.d.ts
+
+# 環境（.env 有秘密，永遠不進版控；要分享請改 .env.example）
+.venv/
+.env
+
+# 資料庫檔（sqlite）。e2e.db 是測試專用的，每次跑都重建。
+*.db
+*.sqlite3
+
+# Playwright 的報告與失敗截圖
+playwright-report/
+test-results/
+.playwright/
+
+# 編輯器與作業系統
+.DS_Store
+.idea/
+.vscode/
+
+# 建置產物
+build/

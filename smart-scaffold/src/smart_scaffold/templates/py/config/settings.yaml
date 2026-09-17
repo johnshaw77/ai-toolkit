@@ -1,0 +1,17 @@
+# 不含秘密的設定放這裡，會進版控。
+# 秘密（金鑰、密碼）放 .env，那個檔案不進版控。
+
+app:
+  name: {{name}}
+  description: {{description}}
+
+service:
+  # 服務監聽位址與埠。建立專案時已經替你避開機器上正在用的埠。
+  # 不打算跑服務的話，這一段可以直接刪掉。
+  host: 127.0.0.1
+  port: {{port}}
+
+logging:
+  # DEBUG / INFO / WARNING / ERROR，可被 .env 的 LOG_LEVEL 覆蓋。
+  level: INFO
+  format: "%(asctime)s %(levelname)s %(name)s %(message)s"

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}首頁 - {{ app_title }}{% endblock %}
+
+{% block content %}
+<section class="page-header">
+  <div>
+    <h1>首頁</h1>
+    <p class="muted">{{ app_title }}</p>
+  </div>
+</section>
+
+<div class="card">
+  <h2>接下來做什麼</h2>
+  <ol class="next-list">
+    <li>
+      在 <code>src/{{ app_name }}/</code> 底下新增一個模組放你的業務邏輯，
+      所有函式吃 <code>sqlite3.Connection</code>，交易邊界由呼叫端決定。
+    </li>
+    <li>
+      資料表寫進 <code>db.py</code> 的 <code>SCHEMA</code>——它可以重複執行。
+    </li>
+    <li>
+      在 <code>api.py</code> 加路由：<code>/api/</code> 底下回 JSON，
+      其他路徑回頁面。清單一律回
+      <code>{ items, total, page, page_size }</code>。
+    </li>
+    <li>
+      頁面繼承 <code>base.html</code>，前端工具（<code>api()</code>、
+      <code>toast()</code>、<code>confirmAction()</code>）在
+      <code>static/app.js</code> 裡。
+    </li>
+  </ol>
+
+  <p class="muted">
+    想看一個接好的完整範例（列表、搜尋、分頁、CRUD），用
+    <code>smart-scaffold web --demo</code> 另外生一個專案來對照。
+  </p>
+</div>
+{% endblock %}

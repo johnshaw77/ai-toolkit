@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# 環境
+.venv/
+.env
+
+# 編輯器與作業系統
+.DS_Store
+.idea/
+.vscode/
+
+# 建置產物
+build/
+dist/
+
+# 逐字對話紀錄，可能夾帶路徑或秘密，要分享前先逐份掃過
+docs/transcripts/
+
+# 無人值守模式的標記檔，是本機狀態不是專案設定
+.claude/UNATTENDED

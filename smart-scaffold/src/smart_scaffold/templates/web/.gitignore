@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# 環境（.env 有秘密，永遠不進版控；要分享請改 .env.example）
+.venv/
+.env
+
+# 資料庫檔
+data/*.db
+*.sqlite3
+
+# Playwright 的報告與失敗截圖
+test-results/
+playwright-report/
+
+# 編輯器與作業系統
+.DS_Store
+.idea/
+.vscode/
+
+# 建置產物
+build/
+dist/
