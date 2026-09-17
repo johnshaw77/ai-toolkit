@@ -107,3 +107,41 @@ Chrome Headless Shell 153.0.8010.12）。
 `demo.webm` 2.8 MB。`final.png` 確認真的登入、詳情展開、假游標停在正確的連結上。
 
 **未驗**：旁白合成與字幕產出（需要 `OPENAI_API_KEY`），以及 `demo-narrated.webm` / `.srt` / `.vtt`。
+
+### 真實環境切換（不是模擬）
+
+```
+$ claude plugin marketplace add johnshaw77/ai-toolkit
+✔ Successfully added marketplace: ai-toolkit
+$ claude plugin install unattended@ai-toolkit
+✔ Successfully installed plugin: unattended@ai-toolkit (scope: user)
+$ claude plugin uninstall unattended@claude-unattended-workflow
+$ claude plugin marketplace remove claude-unattended-workflow
+✔ Successfully removed marketplace
+
+$ claude plugin list
+  ❯ unattended@ai-toolkit
+    Version: 0.23.0
+    Status: ✔ enabled          ← 舊的兩份都清掉了，沒有並存
+```
+
+接著用**真的** `known_marketplaces.json`（假的 `HOME`，symlink 導到暫存目錄，
+不動自己的 PATH）跑 install-bin：
+
+```
+✓ 來源：~/.claude/plugins/marketplaces/ai-toolkit/unattended-workflow/bin/unattended
+✓ 試跑 unattended --help 成功
+rc=0
+```
+
+`installLocation` 是 `…/marketplaces/ai-toolkit`，plugin 根在它下一層。
+**沒改 install-bin.sh 的話這一步會失敗**——舊的偵測只看 `$loc/bin/unattended`。
+
+### 公開前的機密掃描
+
+`grep -rniE "api[_-]key|secret|password|token|BEGIN.*PRIVATE KEY"` 逐條看過，
+命中的全是變數名、文件裡的說明、模板佔位符（`{{var}}`、`dev-only-change-me…`、
+`admin1234`），沒有真值。git 歷史沒有 `.env` / `.pem` / 憑證類檔案。
+
+**掃出一個真的問題並修掉**：這份 VERIFICATION.md 初稿寫了公司內部網址與一筆
+真實會議標題。公開 repo 不能有那些，已改寫成泛稱。
