@@ -14,7 +14,7 @@ from typing import Any
 
 from . import __version__
 from .postactions import next_steps, run_post_actions
-from .presets import PRESETS, Preset, build_variables, get_preset
+from .presets import PRESETS, Preset, build_flags, build_variables, get_preset
 from .questions import AskError, Question, ask_all
 from .render import RenderError, render_tree
 
@@ -141,7 +141,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     variables = build_variables(answers)
 
     try:
-        written = render_tree(preset.template_dir, target, variables)
+        written = render_tree(preset.template_dir, target, variables, build_flags(answers))
     except RenderError as exc:
         print(f"× {exc}", file=sys.stderr)
         return 1

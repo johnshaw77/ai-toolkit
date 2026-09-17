@@ -12,14 +12,18 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.hashing import hash_password
 from app.db.session import SessionLocal
+# scaffold:if demo
 from app.models.item import Item, ItemStatus
+# scaffold:endif
 from app.models.user import User, UserRole
+# scaffold:if demo
 
 _SAMPLE_ITEMS = [
     ("A-001", "範例項目一", ItemStatus.ACTIVE, 12),
     ("A-002", "範例項目二", ItemStatus.DRAFT, 0),
     ("A-003", "範例項目三", ItemStatus.ARCHIVED, 5),
 ]
+# scaffold:endif
 
 
 async def seed() -> None:
@@ -40,6 +44,7 @@ async def seed() -> None:
         else:
             print(f"管理員 {settings.seed_admin_email} 已存在，略過")
 
+        # scaffold:if demo
         for code, name, status, quantity in _SAMPLE_ITEMS:
             found = (
                 await session.execute(select(Item).where(Item.code == code))
@@ -47,6 +52,7 @@ async def seed() -> None:
             if found is None:
                 session.add(Item(code=code, name=name, status=status, quantity=quantity))
 
+        # scaffold:endif
         await session.commit()
     print("初始資料建立完成。")
 

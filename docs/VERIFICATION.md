@@ -412,3 +412,161 @@ app： 94 個檔案 → 後端 uv sync + 前端 npm install → git init → com
       frontend: eslint 過 / vue-tsc 過 / vitest 6 passed / build 過 / e2e 12 passed
       git status --porcelain 空的，node_modules、.venv、.env 都沒混進版控
 ```
+
+---
+
+## 2026-09-12　第四輪：web preset
+
+### 1. smart-scaffold 自己
+
+```
+$ uv run pytest -q       → 96 passed
+$ uv run ruff check .    → All checks passed!
+```
+
+新增的三條測試裡有一條是防呆：掃 `web` preset 的所有 Jinja 模板，確認沒有
+「沒加空白」的插值被渲染器誤判成佔位符。
+
+### 2. 生成專案並跑完整驗證
+
+```
+$ uv run smart-scaffold web --name demo_web --title "示範工具" --path /tmp/w/demo_web
+✓ 已產生 35 個檔案
+
+$ grep -rno '{{[A-Za-z_][A-Za-z0-9_]*}}' /tmp/w/demo_web
+（無輸出；Jinja 的 {{ 變數 }} 則完整保留，base.html 裡有 4 處）
+
+$ uv run ruff check .    → All checks passed!
+$ uv run pytest -q       → 29 passed, 9 deselected（e2e 預設不跑）
+$ uv run pytest -m e2e   → 9 passed
+```
+
+### 3. CLI 與服務實跑
+
+```
+$ uv run demo_web
+demo_web：demo_web 專案
+  服務埠    8002
+  資料庫    /private/tmp/w/demo_web/data/demo_web.db
+
+$ uv run demo_web init && uv run demo_web seed
+資料表已建立 / 已建立管理員 admin@example.com / 初始資料建立完成。
+
+$ uv run demo_web serve
+GET  /api/health          → 200 {"status":"ok"}
+GET  /items（未登入）      → 302 location: /login?next=/items
+GET  /api/items（未登入）  → 401 {"code":"UNAUTHORIZED","message":"請先登入"}
+POST /login（正確）        → 302 → /items
+     set-cookie: demo_web_session=…; HttpOnly; Max-Age=604800; Path=/; SameSite=lax
+POST /login（密碼錯）      → 401
+```
+
+同一個「沒登入」在頁面是 302、在 API 是 401——這個分工有按預期運作。
+
+### 4. 瀏覽器實看
+
+登入頁與列表頁版面正常，深色／亮色兩套配色都對，新增用的 modal 正常開合。
+主題切換在真實瀏覽器裡確認過會寫進 localStorage（我第一次用座標點沒點中，
+改用程式觸發後確認 `dataset.theme` 與 `localStorage` 都有更新；e2e 也有守著）。
+
+### 5. 容器
+
+```
+$ docker compose up -d --build
+$ docker compose ps
+SERVICE   STATUS                    PORTS
+app       Up 12 seconds (healthy)   0.0.0.0:8004->8000/tcp
+
+$ docker compose logs
+→ 建立資料表 / → 建立初始資料（SEED_ON_START=1）/ 已建立管理員 / Application startup complete.
+
+GET  /api/health（8004）→ 200
+GET  /items            → 302 /login?next=/items
+POST /login            → 302
+```
+
+驗完 `docker compose down`，並逐一指名刪掉 `demo_web_app-data` 這個 volume。
+
+### 6. 這一輪抓到的四個真問題
+
+**compose 的 `${APP_PORT:-8004}` 被專案的 `.env` 蓋掉。** 容器被映到 8002——
+也就是本機開發用的那個埠，跟 `make run` 直接撞死。原因是 **compose 會讀專案
+根目錄的 `.env`**，而這個 preset 的 `.env` 正好就在 compose 檔旁邊。變數改名成
+`HOST_PORT`。容器明明是 healthy 的，只有真的去打那個埠才看得出來。
+
+**`tojson` 放進雙引號屬性會把屬性提早關掉。** 我把狀態標籤改成後端單一來源之後
+整個表格消失，5 個 e2e 當場變紅。`tojson` 會跳脫單引號但不跳脫雙引號，屬性要用
+單引號包。
+
+**starlette 1.6 的 TestClient 要的是 `httpx2`。** 裝舊的 `httpx` 會在每次跑測試
+時噴 deprecation 警告。順手把 `filterwarnings` 設成 `error`，並對 starlette 在
+anyio 4.15 底下自己噴的那一條做精準放行。
+
+**e2e fixture 的 PIPE 沒關。** `filterwarnings = error` 把它照了出來
+（`PytestUnraisableExceptionWarning: Exception ignored in: <_io.FileIO>`）。
+改成把服務輸出寫到檔案，順便讓啟動失敗時看得到原因。
+
+### 7. 另外兩個 preset 的回歸
+
+```
+py  → 15 個檔案、8 passed、ruff 零錯誤
+app → 94 個檔案（模板未改動，僅確認 preset 仍可生成）
+```
+
+---
+
+## 2026-09-13　第五輪：範例領域改成可選
+
+### 先量出問題有多大
+
+| preset | 純示範領域 | 佔生成的程式碼 | 另外要改的接線 |
+|---|---|---|---|
+| `web` | 672 行（5 個檔案） | 36% | `api.py`(28 處)、`__main__.py`、`db.py`、`base.html` |
+| `app` | 553 行（8 個檔案） | 17% | 7 個檔案 |
+
+### 四種組合全部實跑
+
+| 組合 | lint | 測試 | e2e |
+|---|---|---|---|
+| `web`（乾淨） | 過 | 12 passed | 6 passed |
+| `web --demo` | 過 | 32 passed | 10 passed |
+| `app`（乾淨） | 後端過／前端 eslint + vue-tsc + build 過 | 後端 10 passed、前端 6 passed | 8 passed |
+| `app --demo` | 同上 | 後端 20 passed、前端 6 passed | 12 passed |
+
+乾淨版確認**沒有任何示範領域殘留**（grep `items_service` / `STATUS_LABELS` /
+`A-001` / `/items` / `SAMPLE_ITEMS` 皆無），也**沒有任何條件標記殘留**。
+
+### 這一輪抓到的六個真問題
+
+**`Query` 變成未使用的 import。** 它只有示範路由在用，乾淨版就成了死 import。
+修法不是加 `noqa`，而是讓登入頁的 `next` 參數改用 `Query(description=...)`——
+本來就該那樣寫，順便解決問題。
+
+**移除區段後多出空白行**，ruff 的 I001 抱怨。空白行要放進標記區段**裡面**。
+`web/__main__.py` 與 `app/seed.py` 各踩一次。
+
+**兩個 import 敘述會讓 isort 在 demo 模式抱怨。** `app` 的 router 原本寫成
+`from ... import items` 與 `from ... import auth, health, users` 兩行，demo 模式下
+ruff 要求合併。改成括號展開加結尾逗號。
+
+**`tests/test_items.py` 與 `tests/e2e/test_items.py` 檔名撞車**，pytest 直接
+`import file mismatch` 收不了測試。e2e 那個改名 `test_items_ui.py`，並把這個坑
+寫進生成專案的 CLAUDE.md。
+
+**cookie 的值不能放中文**（只能 latin-1）。我新加的「壞掉的 cookie」測試用中文
+當假簽章，`UnicodeEncodeError`。
+
+**HomeView 的 `onMounted` / `ref` 在乾淨版變成未使用**，`vue-tsc` 報 TS6192。
+那兩個 import 也要包進條件裡。
+
+**`.scaffold.toml` 的註解裡寫了標記字樣**，被我自己新加的「標記必須成對」測試
+抓到。渲染器本來就會跳過 manifest，所以不是真的會壞，但註解措辭還是改掉了，
+測試也明確跳過 manifest。
+
+### 三個 preset 的回歸
+
+```
+py   → 15 個檔案、8 passed、ruff 零錯誤（沒有 demo 這一題）
+web  → 乾淨 32 檔 / 帶 demo 38 檔
+app  → 乾淨 86 檔 / 帶 demo 94 檔
+```

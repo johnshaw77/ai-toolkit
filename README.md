@@ -12,25 +12,45 @@
 
 執行期**零第三方依賴**，只用標準庫，所以在任何一台裝好 Python 3.12 的機器上都跑得動。
 
-```bash
-git clone <這個 repo> && cd smart-scaffold
-uv sync --extra dev
-```
-
-不想裝也可以直接跑：
+**裝成全域指令**（日常用這個）：
 
 ```bash
-python3 -m smart_scaffold py
+uv tool install --editable /path/to/smart-scaffold
 ```
+
+裝完在**任何目錄**都能直接打 `smart-scaffold`。`--editable` 的意思是它跟著這個
+repo 走——之後改了模板或加了 preset，不用重裝就生效。
+
+要移除：`uv tool uninstall smart-scaffold`。
+
+**不想裝也可以**，從任何目錄指定專案位置跑：
+
+```bash
+uv run --project /path/to/smart-scaffold smart-scaffold web --name demo
+```
+
+或者 `cd` 進 repo 裡 `uv run smart-scaffold ...`。
+
+> 注意：`python3 -m smart_scaffold` **不會動**，除非你先 `uv sync` 再從 repo 裡跑，
+> 或自己設 `PYTHONPATH=src`。套件在 `src/` 底下，不在匯入路徑上。
 
 ## 怎麼用
 
 兩個 preset：
 
-| preset | 生出什麼 |
-|---|---|
-| `py` | Python 專案：uv + `src/` 套件分層 + `scripts/` + `config/` |
-| `app` | 全端專案：FastAPI + SQLAlchemy 2.0 (async) + Vue 3 + Ant Design Vue |
+| preset | 生出什麼 | 什麼時候用 |
+|---|---|---|
+| `py` | Python 專案：uv + `src/` 套件分層 + `scripts/` + `config/` | 函式庫、CLI、腳本 |
+| `web` | FastAPI + Jinja2 + 原生 JS + sqlite，**零 Node** | 一個人或小團隊要用的內部工具 |
+| `app` | FastAPI + SQLAlchemy 2.0 (async) + Vue 3 + Ant Design Vue | 需要豐富互動的後台 |
+
+**預設生出來的專案是乾淨的**——沒有任何範例資料表或範例頁面，不用先花時間清掉
+別人的東西。想看一組接好的完整範本（列表／搜尋／分頁／CRUD）就加 `--demo`，
+通常是另外生一個專案來對照，而不是加在要正式開發的那一個上。
+
+`web` 與 `app` 的差別是**要不要前端工具鏈**。`web` 沒有建置步驟，改完存檔重新
+整理就看得到，裝好 Python 就能跑；代價是複雜互動得自己寫。`app` 給你元件庫與
+型別檢查，代價是 npm 那一整套。
 
 互動模式——問完每一題就開始生：
 
@@ -88,6 +108,7 @@ uv run smart-scaffold py --help
 ```
 src/smart_scaffold/templates/
 ├── py/     # Python 專案：uv + src/ 套件分層 + scripts/ + config/
+├── web/    # 網頁工具：FastAPI + Jinja2 + 原生 JS + sqlite，零 Node
 └── app/    # 全端：FastAPI + SQLAlchemy 2.0 + Vue3 + Ant Design Vue
 ```
 
@@ -97,9 +118,45 @@ src/smart_scaffold/templates/
 兩條容易踩到的規則：
 
 * 刻意不用 `$var`，因為模板裡有 Makefile 與 shell，`$(MAKE)` 和 `$$` 不能被動到。
-* 「不能有空白」是為了跟 Vue 共存——Vue 的插值長得一模一樣。`{{var}}` 是佔位符，
-  `{{ expr }}`（有空白）原樣留給 Vue。prettier 會自動把 Vue 那邊排成有空白的樣子，
-  所以實務上不用特別注意。
+* 「不能有空白」是為了跟 **Vue 與 Jinja2** 共存——它們的插值長得一模一樣。
+  `{{var}}` 是佔位符，`{{ expr }}`（有空白）原樣留給模板引擎。Vue 那邊 prettier
+  會自動排成有空白；Jinja 要自己記得，`web` preset 有一條測試在把關。
+
+## 有條件的模板內容
+
+同一份模板要能生出「乾淨版」與「帶範例版」，靠兩個機制：
+
+**整個檔案**——在模板根目錄放 `.scaffold.toml`（它自己不會被複製進去）：
+
+```toml
+[optional]
+demo = ["src/{{name}}/items.py", "tests/test_items.py"]
+```
+
+旗標為假時，清單裡的檔案與資料夾整個略過。
+
+**檔案裡的片段**——用標記包起來。前後是什麼註解符號都行，渲染器只認中間那串字：
+
+```python
+# scaffold:if demo
+只有 demo 時才要的內容
+# scaffold:endif
+```
+
+```html
+{# scaffold:ifnot demo #}
+沒有 demo 時才要的內容
+{# scaffold:endif #}
+```
+
+條件成立時**只拿掉標記那幾行**，所以生出來的專案看不到標記。不成立時整段拿掉。
+標記不成對會中止並指出是哪個檔案。
+
+兩個實作上的坑，改模板時會遇到：
+
+* **空白行要放進標記區段裡**，否則整段拿掉之後會多出空行，`ruff` 會抱怨。
+* **import 要能兩種模式都排序正確**。只有某個模式才需要的 import，用括號展開的
+  多行寫法加結尾逗號（magic trailing comma），把那一行單獨包起來。
 
 ## 怎麼新增一個 preset
 

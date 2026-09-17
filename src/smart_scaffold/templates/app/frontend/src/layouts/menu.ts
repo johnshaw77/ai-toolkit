@@ -15,7 +15,9 @@ export interface MenuNode {
 
 export const MENU: MenuNode[] = [
   { key: 'home', label: '首頁', icon: 'home' },
+  // scaffold:if demo
   { key: 'items', label: '資料列表', icon: 'table' },
+  // scaffold:endif
   { key: 'users', label: '使用者', icon: 'team', adminOnly: true },
 ]
 

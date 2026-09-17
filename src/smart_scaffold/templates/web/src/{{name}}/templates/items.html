@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block title %}資料列表 - {{ app_title }}{% endblock %}
+
+{% block content %}
+<section class="page-header">
+  <div>
+    <h1>資料列表</h1>
+    <p class="muted">這是範例領域，換成你自己的之後把整支檔案改掉</p>
+  </div>
+  <button type="button" class="button button-primary" data-action="create">新增</button>
+</section>
+
+<form class="toolbar" id="filters" autocomplete="off">
+  <input type="search" name="keyword" placeholder="搜尋代號或名稱" aria-label="關鍵字">
+  <select name="status" aria-label="狀態">
+    <option value="">全部狀態</option>
+    {% for value, label in statuses.items() %}
+    <option value="{{ value }}">{{ label }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="button button-primary">查詢</button>
+  <button type="reset" class="button">重置</button>
+</form>
+
+<p class="alert alert-error" id="list-error" hidden role="alert"></p>
+
+<div class="table-wrap">
+  {# 狀態標籤由後端送過來，JS 讀這個屬性——不要在 JS 裡再抄一份。            #}
+  {# 屬性一定要用單引號包：tojson 會跳脫單引號但**不會跳脫雙引號**，          #}
+  {# 用雙引號包的話 JSON 裡的引號會把屬性提早關掉，整個表格就不見了。        #}
+  <table class="data-table" data-status-labels='{{ statuses | tojson }}'>
+    <thead>
+      <tr>
+        <th><button type="button" class="sort" data-sort="code">代號</button></th>
+        <th><button type="button" class="sort" data-sort="name">名稱</button></th>
+        <th>狀態</th>
+        <th class="align-right"><button type="button" class="sort" data-sort="quantity">數量</button></th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody id="rows">
+      <tr class="placeholder-row"><td colspan="5">載入中…</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<nav class="pager">
+  <span id="total" class="muted">共 0 筆</span>
+  <button type="button" class="button" id="prev" disabled>上一頁</button>
+  <span id="page-label" class="muted">第 1 頁</span>
+  <button type="button" class="button" id="next" disabled>下一頁</button>
+</nav>
+
+<dialog id="item-dialog" class="dialog">
+  <form id="item-form" class="dialog-body stack">
+    <h2 id="dialog-title">新增資料</h2>
+
+    <label class="field">
+      <span class="field-label">代號</span>
+      <input name="code" required placeholder="例如 A-001">
+    </label>
+
+    <label class="field">
+      <span class="field-label">名稱</span>
+      <input name="name" required placeholder="請輸入名稱">
+    </label>
+
+    <label class="field">
+      <span class="field-label">狀態</span>
+      <select name="status">
+        {% for value, label in statuses.items() %}
+        <option value="{{ value }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label class="field">
+      <span class="field-label">數量</span>
+      <input name="quantity" type="number" min="0" value="0">
+    </label>
+
+    <label class="field">
+      <span class="field-label">備註</span>
+      <textarea name="note" rows="3"></textarea>
+    </label>
+
+    <p class="alert alert-error" id="form-error" hidden role="alert"></p>
+
+    <div class="dialog-actions">
+      <button type="button" class="button" data-action="cancel">取消</button>
+      <button type="submit" class="button button-primary">儲存</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="/static/items.js"></script>
+{% endblock %}

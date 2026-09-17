@@ -4,7 +4,7 @@ import { APP_TITLE, cjkButton, login, submitLogin, userMenu } from './helpers'
 
 test.describe('登入', () => {
   test('未登入時會被導向登入頁，並記住原本要去的地方', async ({ page }) => {
-    await page.goto('/items')
+    await page.goto('/users')
     await expect(page).toHaveURL(/\/login\?next=/)
     await expect(page.getByRole('heading', { name: APP_TITLE })).toBeVisible()
   })
@@ -20,10 +20,10 @@ test.describe('登入', () => {
   })
 
   test('登入成功之後回到原本要去的頁面', async ({ page }) => {
-    await page.goto('/items')
+    await page.goto('/users')
     await page.waitForURL(/\/login\?next=/)
     await submitLogin(page)
-    await expect(page).toHaveURL(/\/items/)
+    await expect(page).toHaveURL(/\/users/)
   })
 
   test('登出之後回到登入頁，而且不能再直接進去', async ({ page }) => {
@@ -32,7 +32,7 @@ test.describe('登入', () => {
     await page.getByRole('menuitem', { name: '登出' }).click()
 
     await expect(page).toHaveURL(/\/login/)
-    await page.goto('/items')
+    await page.goto('/users')
     await expect(page).toHaveURL(/\/login/)
   })
 })

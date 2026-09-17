@@ -10,6 +10,8 @@ import pytest
 from smart_scaffold.render import (
     MissingVariableError,
     TargetExistsError,
+    UnbalancedConditionError,
+    apply_conditions,
     render_text,
     render_tree,
 )
@@ -151,3 +153,100 @@ def test_可執行權限保留(tmp_path):
 def test_找不到模板資料夾會明講(tmp_path):
     with pytest.raises(Exception, match="找不到模板資料夾"):
         render_tree(tmp_path / "沒這個", tmp_path / "out", VARS)
+
+
+# --------------------------------------------------------------- 條件式內容
+
+
+def test_條件成立時只拿掉標記那幾行():
+    """生出來的專案不該看到標記本身。"""
+    source = "前\n# scaffold:if demo\n示範\n# scaffold:endif\n後\n"
+    assert apply_conditions(source, {"demo": True}, source="a.py") == "前\n示範\n後\n"
+
+
+def test_條件不成立時整段拿掉():
+    source = "前\n# scaffold:if demo\n示範\n# scaffold:endif\n後\n"
+    assert apply_conditions(source, {"demo": False}, source="a.py") == "前\n後\n"
+
+
+def test_沒提到的旗標當成假():
+    source = "前\n# scaffold:if demo\n示範\n# scaffold:endif\n後\n"
+    assert apply_conditions(source, {}, source="a.py") == "前\n後\n"
+
+
+def test_各種註解符號都認得():
+    """Python、JS、Jinja 的註解長得都不一樣，但標記是同一串字。"""
+    for opening, closing in [("# ", ""), ("// ", ""), ("{# ", " #}"), ("<!-- ", " -->")]:
+        source = f"前\n{opening}scaffold:if demo{closing}\n示範\n{opening}scaffold:endif{closing}\n"
+        assert apply_conditions(source, {"demo": False}, source="a") == "前\n"
+
+
+def test_巢狀的條件區段():
+    source = (
+        "a\n# scaffold:if outer\nb\n# scaffold:if inner\nc\n"
+        "# scaffold:endif\nd\n# scaffold:endif\ne\n"
+    )
+    both = apply_conditions(source, {"outer": True, "inner": True}, source="a")
+    assert both == "a\nb\nc\nd\ne\n"
+    outer_only = apply_conditions(source, {"outer": True, "inner": False}, source="a")
+    assert outer_only == "a\nb\nd\ne\n"
+    assert apply_conditions(source, {}, source="a") == "a\ne\n"
+
+
+def test_標記不成對會中止並指出是哪個檔案():
+    with pytest.raises(UnbalancedConditionError, match="a.py"):
+        apply_conditions("# scaffold:if demo\nx\n", {"demo": True}, source="a.py")
+    with pytest.raises(UnbalancedConditionError, match="endif"):
+        apply_conditions("# scaffold:endif\n", {}, source="a.py")
+
+
+def test_沒有標記的檔案原封不動():
+    source = "什麼都沒有\n"
+    assert apply_conditions(source, {"demo": False}, source="a.py") == source
+
+
+def test_整個檔案可以依旗標略過(tmp_path):
+    template = tmp_path / "tpl"
+    _write_template(
+        template,
+        {
+            "keep.txt": "{{name}}\n",
+            "demo/sample.txt": "示範\n",
+            "tests/test_demo.txt": "示範測試\n",
+        },
+    )
+    (template / ".scaffold.toml").write_text(
+        '[optional]\ndemo = ["demo", "tests/test_demo.txt"]\n', encoding="utf-8"
+    )
+
+    with_demo = tmp_path / "with"
+    render_tree(template, with_demo, VARS, {"demo": True})
+    assert (with_demo / "demo" / "sample.txt").is_file()
+    assert (with_demo / "tests" / "test_demo.txt").is_file()
+
+    without = tmp_path / "without"
+    render_tree(template, without, VARS, {"demo": False})
+    assert (without / "keep.txt").is_file()
+    assert not (without / "demo").exists()
+    assert not (without / "tests" / "test_demo.txt").exists()
+
+
+def test_模板自己的設定檔不會被複製進去(tmp_path):
+    template = tmp_path / "tpl"
+    _write_template(template, {"keep.txt": "x\n"})
+    (template / ".scaffold.toml").write_text("[optional]\n", encoding="utf-8")
+
+    target = tmp_path / "out"
+    render_tree(template, target, VARS)
+    assert not (target / ".scaffold.toml").exists()
+
+
+def test_ifnot_是反過來的():
+    source = "前\n# scaffold:ifnot demo\n沒有範例時才要的\n# scaffold:endif\n後\n"
+    assert apply_conditions(source, {"demo": False}, source="a") == "前\n沒有範例時才要的\n後\n"
+    assert apply_conditions(source, {"demo": True}, source="a") == "前\n後\n"
+
+
+def test_ifnot_也要指定旗標():
+    with pytest.raises(UnbalancedConditionError, match="ifnot"):
+        apply_conditions("# scaffold:ifnot\nx\n# scaffold:endif\n", {}, source="a")

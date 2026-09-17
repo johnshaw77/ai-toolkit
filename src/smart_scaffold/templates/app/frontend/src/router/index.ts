@@ -34,12 +34,14 @@ export const router = createRouter({
           component: () => import('@/views/HomeView.vue'),
           meta: { title: '首頁' },
         },
+        // scaffold:if demo
         {
           path: 'items',
           name: 'items',
           component: () => import('@/views/ItemsView.vue'),
           meta: { title: '資料列表' },
         },
+        // scaffold:endif
         {
           path: 'users',
           name: 'users',

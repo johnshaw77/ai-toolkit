@@ -1,0 +1,20 @@
+# 不含秘密的設定放這裡，會進版控。
+# 秘密（金鑰、密碼）放 .env，那個檔案不進版控。
+
+app:
+  name: {{name}}
+  title: {{title}}
+  description: {{description}}
+
+service:
+  # 服務監聽位址與埠。建立專案時已經替你避開機器上正在用的埠。
+  host: 127.0.0.1
+  port: {{port}}
+
+database:
+  # sqlite 檔案位置，相對於專案根目錄。可被 .env 的 DATABASE_PATH 覆蓋。
+  path: data/{{name}}.db
+
+logging:
+  level: INFO
+  format: "%(asctime)s %(levelname)s %(name)s %(message)s"

@@ -138,3 +138,73 @@ def test_專案名以_pg_開頭時資料庫帳號要換掉():
     userinfo = database_url_for("postgres", "pg_tools").split("//", 1)[1].split("@", 1)[0]
     assert userinfo == "app_pg_tools:app_pg_tools_dev_pw"
     assert not userinfo.startswith("pg_")
+
+
+def test_web_preset_的模板在而且只有一包依賴():
+    preset = PRESETS["web"]
+    assert (preset.template_dir / "src" / "{{name}}" / "api.py").is_file()
+    assert [step.subdir for step in preset.install_steps] == ["."]
+
+
+def test_web_preset_的容器埠跟本機服務埠錯開():
+    variables = build_variables({"name": "demo", "port": 8002})
+    assert variables["port"] == 8002
+    assert variables["container_port"] != 8002
+
+
+def test_web_模板裡的_jinja_插值不會被當成佔位符():
+    """Jinja 的 {{ 變數 }} 跟佔位符只差一個空白，這條是防呆。"""
+    from smart_scaffold.render import PLACEHOLDER
+
+    templates = (PRESETS["web"].template_dir / "src" / "{{name}}" / "templates").glob("*.html")
+    for path in templates:
+        found = set(PLACEHOLDER.findall(path.read_text(encoding="utf-8")))
+        assert not found, f"{path.name} 裡有沒加空白的 Jinja 插值：{found}"
+
+
+def test_範例領域預設是關的():
+    """每開一個新專案都要先清掉範例，那是純粹的摩擦。預設就該是乾淨的。"""
+    for key in ("web", "app"):
+        demo = next(q for q in PRESETS[key].questions if q.key == "demo")
+        assert demo.default is False
+
+
+def test_py_preset_沒有範例領域這一題():
+    """py preset 本來就沒有範例領域，不要拿無關的題目煩人。"""
+    assert "demo" not in [q.key for q in PRESETS["py"].questions]
+
+
+def test_旗標只包含模板真的用到的():
+    from smart_scaffold.presets import build_flags
+
+    flags = build_flags({"demo": True, "install": True, "git": False})
+    assert flags == {"demo": True}
+
+
+@pytest.mark.parametrize("key", ["web", "app"])
+def test_有範例領域的_preset_都有對應的清單(key):
+    """manifest 列的檔案必須真的存在，否則等於沒設定卻不會有人發現。"""
+    from smart_scaffold.render import load_manifest
+
+    preset = PRESETS[key]
+    paths = load_manifest(preset.template_dir).get("optional", {}).get("demo", [])
+    assert paths, f"{key} 沒有列出範例領域的檔案"
+    for entry in paths:
+        assert (preset.template_dir / entry).exists(), f"{key} 的清單列了不存在的 {entry}"
+
+
+@pytest.mark.parametrize("key", ["web", "app"])
+def test_條件標記都是成對的(key):
+    """標記不成對會在生成時才爆，這裡先擋下來。"""
+    from smart_scaffold.render import MANIFEST_NAME, apply_conditions
+
+    for path in PRESETS[key].template_dir.rglob("*"):
+        if not path.is_file() or path.name == MANIFEST_NAME:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        # 兩種旗標值都跑一次，確保兩條路徑都不會炸。
+        for value in (True, False):
+            apply_conditions(text, {"demo": value}, source=path.name)

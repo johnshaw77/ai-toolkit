@@ -114,7 +114,12 @@ def default_port(_answers: dict[str, Any]) -> int:
     return _free_port(PORT_SEARCH_START, FALLBACK_PORT)
 
 
-def allocate_ports(backend_port: int, frontend_port: int, db_port: int = 0) -> dict[str, int]:
+def allocate_ports(
+    backend_port: int,
+    frontend_port: int,
+    db_port: int = 0,
+    port: int = 0,
+) -> dict[str, int]:
     """把剩下那幾個沒問使用者的埠一次配好。
 
     容器版的埠**刻意跟本機開發用的錯開**，這樣 `make api` / `make web` 跟
@@ -133,6 +138,8 @@ def allocate_ports(backend_port: int, frontend_port: int, db_port: int = 0) -> d
     blocked = taken | {backend_port, frontend_port}
     if db_port:
         blocked.add(db_port)
+    if port:
+        blocked.add(port)
 
     api = _free_port_blocked(backend_port + 1, blocked, backend_port + 1)
     blocked.add(api)
@@ -141,7 +148,15 @@ def allocate_ports(backend_port: int, frontend_port: int, db_port: int = 0) -> d
     if not db_port:
         db_port = _free_port_blocked(DB_PORT_SEARCH_START, blocked, FALLBACK_DB_PORT)
 
-    return {"api_container_port": api, "web_container_port": web, "db_port": db_port}
+    # 單一服務的 preset（web）只需要一個容器埠。
+    container = _free_port_blocked(port + 1, blocked, port + 1) if port else api
+
+    return {
+        "api_container_port": api,
+        "web_container_port": web,
+        "db_port": db_port,
+        "container_port": container,
+    }
 
 
 def _free_port_blocked(start: int, blocked: set[int], fallback: int) -> int:
@@ -196,6 +211,16 @@ PYTHON_QUESTION = Question(
     type="choice",
     choices=("3.12", "3.13"),
     default="3.12",
+)
+
+#: 要不要附一組完整的範例領域（列表／搜尋／分頁／CRUD）。
+#: **預設不給**——每開一個新專案都要先清掉範例，那是純粹的摩擦。
+#: 想看範本的時候另外生一個帶 --demo 的專案來對照就好。
+DEMO_QUESTION = Question(
+    key="demo",
+    prompt="要附一組範例領域嗎（列表／搜尋／分頁／CRUD 的完整範本）",
+    type="bool",
+    default=False,
 )
 
 #: 後置動作也是問題，這樣「新增一題只改一處」才沒有例外。
@@ -286,6 +311,7 @@ APP_QUESTIONS: tuple[Question, ...] = (
         choices=("sqlite", "postgres"),
         default="sqlite",
     ),
+    DEMO_QUESTION,
     Question(
         key="db_port",
         prompt="PostgreSQL 對外的主機埠",
@@ -311,11 +337,45 @@ APP_VERIFY_COMMANDS: tuple[str, ...] = (
 )
 
 
+#: web preset：一個服務、一個埠，前端沒有建置步驟所以只有一包依賴。
+WEB_QUESTIONS: tuple[Question, ...] = (
+    *IDENTITY_QUESTIONS,
+    Question(
+        key="title",
+        prompt="介面上顯示的名稱（會出現在瀏覽器標題與頁首）",
+        type="str",
+        default="{description}",
+        validate=_check_title,
+    ),
+    PYTHON_QUESTION,
+    Question(
+        key="port",
+        prompt="服務埠",
+        type="int",
+        default=default_port,
+        validate=_check_port,
+    ),
+    DEMO_QUESTION,
+    *POST_ACTION_QUESTIONS,
+)
+
+WEB_VERIFY_COMMANDS: tuple[str, ...] = (
+    "uv run pytest",
+    "uv run ruff check .",
+)
+
+
 PRESETS: dict[str, Preset] = {
     "py": Preset(
         key="py",
         summary="Python 專案：uv + src/ 套件分層 + scripts/ + config/",
         questions=PY_QUESTIONS,
+    ),
+    "web": Preset(
+        key="web",
+        summary="網頁工具：FastAPI + Jinja2 + 原生 JS + sqlite，零 Node",
+        questions=WEB_QUESTIONS,
+        verify_commands=WEB_VERIFY_COMMANDS,
     ),
     "app": Preset(
         key="app",
@@ -373,6 +433,15 @@ def container_database_url_for(database: str, name: str) -> str:
     return f"sqlite+aiosqlite:////data/{name}.db"
 
 
+def build_flags(answers: dict[str, Any]) -> dict[str, bool]:
+    """哪些條件式內容要留下來。
+
+    刻意只列出**真的被模板用到的**旗標，不要把所有布林答案都倒進去——
+    那樣 `install` / `git` 也會變成條件名，哪天有人不小心撞名就很難查。
+    """
+    return {"demo": bool(answers.get("demo", False))}
+
+
 def build_variables(answers: dict[str, Any]) -> dict[str, Any]:
     """把答案轉成模板變數。
 
@@ -384,7 +453,10 @@ def build_variables(answers: dict[str, Any]) -> dict[str, Any]:
     database = str(answers.get("database") or "sqlite")
     backend_port = int(answers.get("backend_port") or FALLBACK_PORT)
     frontend_port = int(answers.get("frontend_port") or FALLBACK_FRONTEND_PORT)
-    ports = allocate_ports(backend_port, frontend_port, int(answers.get("db_port") or 0))
+    port = int(answers.get("port") or FALLBACK_PORT)
+    ports = allocate_ports(
+        backend_port, frontend_port, int(answers.get("db_port") or 0), port
+    )
     db_port = ports["db_port"]
     db_user, db_password = db_credentials(name)
     return {
@@ -392,7 +464,8 @@ def build_variables(answers: dict[str, Any]) -> dict[str, Any]:
         "description": description,
         "title": str(answers.get("title") or description),
         "python_version": str(answers.get("python_version") or "3.12"),
-        "port": int(answers.get("port") or FALLBACK_PORT),
+        "port": port,
+        "container_port": ports["container_port"],
         "backend_port": backend_port,
         "frontend_port": frontend_port,
         "api_container_port": ports["api_container_port"],

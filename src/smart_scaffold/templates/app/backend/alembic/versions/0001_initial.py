@@ -1,4 +1,4 @@
-"""建立初始資料表：users / refresh_tokens / items
+"""建立初始資料表
 
 Revision ID: 0001
 Revises:
@@ -56,6 +56,7 @@ def upgrade() -> None:
     op.create_index("ix_refresh_tokens_user_id", "refresh_tokens", ["user_id"])
     op.create_index("ix_refresh_tokens_token_hash", "refresh_tokens", ["token_hash"])
 
+    # scaffold:if demo
     op.create_table(
         "items",
         sa.Column("id", sa.Uuid(), nullable=False),
@@ -72,9 +73,12 @@ def upgrade() -> None:
     )
     op.create_index("ix_items_code", "items", ["code"])
     op.create_index("ix_items_name", "items", ["name"])
+    # scaffold:endif
 
 
 def downgrade() -> None:
+    # scaffold:if demo
     op.drop_table("items")
+    # scaffold:endif
     op.drop_table("refresh_tokens")
     op.drop_table("users")

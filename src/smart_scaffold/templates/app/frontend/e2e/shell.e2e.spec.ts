@@ -13,7 +13,12 @@ test.describe('後台外殼', () => {
     page.on('pageerror', (error) => noise.push(`[pageerror] ${error.message}`))
 
     await login(page)
-    for (const path of ['/items', '/users', '/']) {
+    const paths = ['/users', '/']
+    // scaffold:if demo
+    paths.unshift('/items')
+    // scaffold:endif
+
+    for (const path of paths) {
       await page.goto(path)
       await expect(userMenu(page)).toBeVisible()
     }
@@ -23,8 +28,10 @@ test.describe('後台外殼', () => {
 
   test('側邊欄可以在頁面之間切換', async ({ page }) => {
     await login(page)
+    // scaffold:if demo
     await page.getByRole('menuitem', { name: '資料列表' }).click()
     await expect(page).toHaveURL(/\/items/)
+    // scaffold:endif
     await page.getByRole('menuitem', { name: '使用者' }).click()
     await expect(page).toHaveURL(/\/users/)
     await expect(page.getByRole('cell', { name: 'admin@example.com' })).toBeVisible()
