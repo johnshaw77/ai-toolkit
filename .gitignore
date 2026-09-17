@@ -1,0 +1,4 @@
+# npm 安裝產物，每台機器自己 npm install
+node_modules/
+# kokoro 用的 Python venv：內部寫死絕對路徑，不能跨機器搬，要用再照 SKILL.md 重建
+.venv/
