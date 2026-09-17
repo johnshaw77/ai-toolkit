@@ -1,0 +1,49 @@
+{
+  "description": "Solo workflow: always-on rules, completion gate, transcript archive",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/verify-gate.sh\"",
+            "timeout": 660,
+            "statusMessage": "檢查測試與瀏覽器驗證…"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/archive-transcript.sh\" --session",
+            "timeout": 60,
+            "statusMessage": "更新對話存檔…"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/archive-transcript.sh\"",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
+}

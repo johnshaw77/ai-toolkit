@@ -1,0 +1,15 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "claude-unattended-workflow",
+  "description": "Workflow plugins for running Claude Code unattended with verification gates",
+  "owner": {
+    "name": "john_hsiao"
+  },
+  "plugins": [
+    {
+      "name": "unattended",
+      "source": "./",
+      "description": "Always-on rules, completion gate, mode switch, transcript archive"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+# Windows 的 Git 預設 core.autocrlf=true，checkout 時會把換行轉成 CRLF。
+# bash 讀到 CRLF 會報「$'\r': command not found」，hook 和 bin/unattended 整支失效，
+# 而且 hook 失效是安靜的。這些檔案一律固定 LF。
+*.sh            text eol=lf
+bin/unattended  text eol=lf
+*.py            text eol=lf
+*.json          text eol=lf
