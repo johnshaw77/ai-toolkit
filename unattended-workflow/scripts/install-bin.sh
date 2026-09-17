@@ -21,20 +21,42 @@ warn() { printf '⚠ %s\n' "$*"; }
 fail() { printf '✗ %s\n' "$*"; exit 1; }
 
 # ── 1. 找 marketplace 目錄 ──
+# plugin 根不一定等於 marketplace 根：一個 marketplace repo 可以放多個 plugin，
+# 各自在自己的子目錄（ai-toolkit 就是這樣，plugin 根在 <marketplace>/unattended-workflow）。
+# 所以每個 installLocation 都要試自己與往下一層。
+is_plugin_root() {
+  [ -f "$1/bin/unattended" ] && \
+  [ "$(jq -r '.name // ""' "$1/.claude-plugin/plugin.json" 2>/dev/null)" = "unattended" ]
+}
+
+find_plugin_root() {
+  local loc="$1" sub
+  if is_plugin_root "$loc"; then printf '%s\n' "$loc"; return 0; fi
+  for sub in "$loc"/*/; do
+    [ -d "$sub" ] || continue          # 沒有子目錄時 glob 不展開，這行擋掉字面值
+    sub="${sub%/}"
+    if is_plugin_root "$sub"; then printf '%s\n' "$sub"; return 0; fi
+  done
+  return 1
+}
+
 src_root=""
 known="$CONFIG_DIR/plugins/known_marketplaces.json"
 if [ -f "$known" ] && command -v jq >/dev/null 2>&1; then
   while IFS= read -r loc; do
     [ -n "$loc" ] || continue
-    if [ -f "$loc/bin/unattended" ] && \
-       [ "$(jq -r '.name // ""' "$loc/.claude-plugin/plugin.json" 2>/dev/null)" = "unattended" ]; then
-      src_root="$loc"; break
+    if found=$(find_plugin_root "$loc"); then
+      src_root="$found"; break
     fi
   done < <(jq -r '.[].installLocation // empty' "$known" 2>/dev/null)
 fi
 [ -n "$src_root" ] || {
-  fallback="$CONFIG_DIR/plugins/marketplaces/claude-unattended-workflow"
-  [ -f "$fallback/bin/unattended" ] && src_root="$fallback"
+  # 沒有 jq 時的退路。舊的 claude-unattended-workflow marketplace 也留著，
+  # 讓還沒換過去的人不會突然壞掉。
+  for fallback in "$CONFIG_DIR/plugins/marketplaces/ai-toolkit/unattended-workflow" \
+                  "$CONFIG_DIR/plugins/marketplaces/claude-unattended-workflow"; do
+    [ -f "$fallback/bin/unattended" ] && { src_root="$fallback"; break; }
+  done
 }
 [ -n "$src_root" ] || fail "找不到 plugin 的 marketplace 目錄（$CONFIG_DIR/plugins/marketplaces/…）。先 /plugin install unattended。"
 src="$src_root/bin/unattended"

@@ -4,9 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 這是什麼
 
-這個 repo **本身就是一個 Claude Code plugin**（`unattended`），不是應用程式。
+這個目錄**本身就是一個 Claude Code plugin**（`unattended`），不是應用程式。
 沒有 `package.json`、沒有測試框架、沒有建置步驟——產物就是 bash hook、
 markdown 指令定義、和一支純標準庫的 Python 腳本。
+
+它住在 `ai-toolkit` 這個 marketplace repo 的 `unattended-workflow/` 子目錄底下，
+**marketplace 清單在上一層的 `.claude-plugin/marketplace.json`**，不在這裡。
+以前是獨立 repo `claude-unattended-workflow`，2026-09-17 併進來。
 
 改動的「正確性」不靠單元測試，靠**手動觸發 hook 看它吐什麼**（見下）。
 
@@ -164,7 +168,9 @@ stdout 只能有回傳給 Claude Code 的那一包 JSON，所以 fd 1 整個導�
   不會跟著 `claude plugin update` 更新。實作在 `scripts/install-bin.sh`
   （`/unattended:install-bin` 呼叫）：來源從 `known_marketplaces.json` 的
   `installLocation` 找，**不能用 `CLAUDE_PLUGIN_ROOT`**——那是帶版號的快取目錄，
-  下次更新就斷。覆蓋既有檔案前一定檢查內容含 `SCRIPT_SIGNATURE`（`bin/unattended`
+  下次更新就斷。注意 **plugin 根不等於 marketplace 根**：ai-toolkit 一個 repo
+  放多個工具，plugin 根在 `<marketplace>/unattended-workflow`，所以每個
+  `installLocation` 都要試自己與往下一層（`find_plugin_root()`）。覆蓋既有檔案前一定檢查內容含 `SCRIPT_SIGNATURE`（`bin/unattended`
   第 2 行的註解），改那行註解時兩邊要一起改。
   測試用 `UNATTENDED_INSTALL_PLATFORM=darwin|linux|gitbash` 加上假的 `HOME`、
   `CLAUDE_CONFIG_DIR`、`PATH`，不要對真的家目錄跑。

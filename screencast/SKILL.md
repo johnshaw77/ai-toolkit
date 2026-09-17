@@ -11,10 +11,9 @@ description: "Record an operational walkthrough / how-to video of a web app by d
 引擎（`lib/`、`run.mjs`）跟任何專案都無關，裝一份就好，**不要複製進各專案裡**——
 每個專案只需要自己的 scenario 檔（steps 清單），跑的時候指到 `~/.claude/skills/screencast/run.mjs`。
 
-> **正本在 `Optimus-AI/lab/screencast/engine/`**，`~/.claude/skills/screencast` 是指過去的
-> symlink。引擎要進版控才不會改壞沒得回頭，而放進既有 repo 比另開一個省事。
-> 改這裡的檔案 = 改那個 repo，記得 commit。哪天要拆成獨立 repo 或分享給別人，
-> 把 `engine/` 整包搬走、重接 symlink 就行。
+> **正本在 `@Projects/ai-toolkit/screencast/`**，`~/.claude/skills/screencast` 是指過去的
+> symlink，全機器只有這一份。引擎要進版控才不會改壞沒得回頭。
+> 改這裡的檔案 = 改 ai-toolkit 那個 repo，記得 commit。
 
 ## 什麼時候用
 
@@ -24,7 +23,7 @@ description: "Record an operational walkthrough / how-to video of a web app by d
 ## 一次性設置（每台機器只需要做一次）
 
 ```bash
-cd ~/.claude/skills/screencast    # symlink，實體在 Optimus-AI/lab/screencast/engine
+cd ~/.claude/skills/screencast    # symlink，實體在 @Projects/ai-toolkit/screencast
 npm install                       # node_modules 不進版控，新機器一定要跑
 npx playwright install chromium   # 沒裝過 Chromium 才需要
 ```
@@ -58,7 +57,7 @@ uv pip install --python .venv/bin/python kokoro-onnx soundfile
 
 2. **在目標專案裡寫一份 scenario 檔**（不是在這個 skill 目錄下！）。參考
    `examples/example-scenario.mjs` 的格式，通常放在該專案一個明顯的地方（例如
-   `lab/screencast/scenarios/` 或使用者指定的目錄）。四種 step type：
+   `lab/screencast/scenarios/`，或使用者指定的目錄）。四種 step type：
 
    | type | 欄位 | 說明 |
    |---|---|---|

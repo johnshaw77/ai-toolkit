@@ -1,0 +1,13 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "ai-toolkit",
+  "description": "john_hsiao 的 AI 工具集。目前只有 unattended 是 Claude Code plugin；screencast 是 skill、smart-scaffold 是獨立 CLI，安裝方式見 repo 根的 README。",
+  "owner": { "name": "john_hsiao" },
+  "plugins": [
+    {
+      "name": "unattended",
+      "source": "./unattended-workflow",
+      "description": "Always-on rules, completion gate, mode switch, transcript archive"
+    }
+  ]
+}

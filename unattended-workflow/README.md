@@ -1,4 +1,7 @@
-# claude-unattended-workflow
+# unattended
+
+> 這是 [ai-toolkit](../README.md) 底下的一個 plugin。以前住在獨立 repo
+> `johnshaw77/claude-unattended-workflow`，那邊已經封存，正本在這裡。
 
 讓 Claude Code 能**一路做到底再回報**，而不是做兩步就停下來問你——並且把每次
 對話存成可調閱的 HTML。
@@ -91,16 +94,20 @@ Windows 上 `python --version` 如果跳出 Microsoft Store，代表 Python 沒�
 在 Claude Code 裡輸入：
 
 ```
-/plugin marketplace add johnshaw77/claude-unattended-workflow
+/plugin marketplace add johnshaw77/ai-toolkit
 /plugin install unattended
 ```
+
+（以前裝過舊的 `claude-unattended-workflow` marketplace 的話，先
+`/plugin marketplace remove claude-unattended-workflow` 再跑上面兩行，
+否則會有兩份互相打架。）
 
 然後**完全關掉 Claude Code 再重開**——hook 是在對話開始時載入的，不重開不會生效。
 
 確認有裝好：
 
 ```bash
-claude plugin list        # 應該看到 unattended@claude-unattended-workflow，Status: ✔ enabled
+claude plugin list        # 應該看到 unattended@ai-toolkit，Status: ✔ enabled
 ```
 
 重開後在 Claude Code 輸入 `/unattended:`，應該會列出 `spec`、`mode`、
@@ -375,8 +382,8 @@ tmux attach -t claude   # 回來接上
 `bin/unattended` 把「建立標記檔 + 開 tmux + 啟動 Claude Code」包成一個指令。
 
 **裝 plugin 時它就已經在你電腦上了**——`/plugin marketplace add` 會把整個 repo
-clone 到 `~/.claude/plugins/marketplaces/claude-unattended-workflow/`，
-`bin/` 也在裡面，不用另外從 GitHub 下載。只是 plugin 不能動你的 PATH，
+clone 到 `~/.claude/plugins/marketplaces/ai-toolkit/`，`bin/` 就在
+`unattended-workflow/bin/`，不用另外從 GitHub 下載。只是 plugin 不能動你的 PATH，
 所以要接上一次：
 
 ```
@@ -403,14 +410,14 @@ macOS / Linux / WSL：
 
 ```bash
 mkdir -p ~/.local/bin
-ln -sf ~/.claude/plugins/marketplaces/claude-unattended-workflow/bin/unattended ~/.local/bin/unattended
+ln -sf ~/.claude/plugins/marketplaces/ai-toolkit/unattended-workflow/bin/unattended ~/.local/bin/unattended
 # 確認 ~/.local/bin 在 PATH 裡，沒有的話加進 ~/.zshrc
 ```
 
 Windows（Git Bash）：
 
 ```bash
-echo "alias unattended='bash ~/.claude/plugins/marketplaces/claude-unattended-workflow/bin/unattended --no-tmux'" >> ~/.bashrc
+echo "alias unattended='bash ~/.claude/plugins/marketplaces/ai-toolkit/unattended-workflow/bin/unattended --no-tmux'" >> ~/.bashrc
 source ~/.bashrc
 ```
 
