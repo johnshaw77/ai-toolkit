@@ -24,22 +24,29 @@ brew install ffmpeg
 
 ## 錄一支
 
-在**目標專案**裡寫好 scenario 後：
+在**目標專案**裡寫好 scenario 後，先用 dry-run 確認每一步都對得到元素（不錄影、
+不合成語音、不動輸出資料夾，幾秒就跑完），再正式錄：
 
 ```bash
+node ~/.claude/skills/screencast/run.mjs --dry-run scenarios/your-scenario.mjs
 node ~/.claude/skills/screencast/run.mjs scenarios/your-scenario.mjs
 ```
+
+有步驟失敗時 exit code 是 1。
 
 輸出位置由 scenario 自己的 `outDir` 決定（慣例是用 `import.meta.url` 算，讓影片黏在
 scenario 檔旁邊而不是黏在引擎旁邊）：
 
 - `demo.webm` 無聲影片
 - `demo-narrated.webm` 疊了旁白配音的版本（每一步的停留時間照旁白長度自動抓，不用手動喬）
+- `demo.mp4` H.264 版本（有旁白就帶聲音）——**要給同事看就給這個**，`.webm` 在
+  PowerPoint、LINE、Teams、Windows 常常播不了
 - `demo.srt` / `demo.vtt` 字幕（講稿跟時間戳錄的時候就有，不用跑語音辨識）
 - `final.png` 最後一步的截圖
 - `manifest.json` 每一步相對影片開頭的起訖毫秒數
 
-⚠️ **每次跑都會把 `outDir` 整個刪掉重建**，不要把別的東西放進去。
+⚠️ **每次跑都會把 `outDir` 整個刪掉重建**，不要把別的東西放進去。有防呆：outDir
+裡有不是 screencast 產出的東西時會拒絕執行，不會刪。
 
 舊的錄影要補字幕不用重錄：
 
@@ -49,8 +56,9 @@ node ~/.claude/skills/screencast/tools/manifest-to-srt.mjs <out 目錄>
 
 ## 換語音引擎
 
-由 scenario 的 `narration` 欄位決定，預設是 OpenAI（`nova`，讀 `OPENAI_API_KEY`）。
-要改試別家或自架的，只要那個服務有 OpenAI 相容的 `/v1/audio/speech` 端點，改這裡就好、
+由 scenario 的 `narration` 欄位決定，預設是本地的 `kokoro`（免費，但中文機械感重、
+要另外裝 `.venv`，見 SKILL.md）；中文內容建議用 `engine: 'openai', voice: 'nova'`
+（讀 `OPENAI_API_KEY`）。要改試別家或自架的，只要那個服務有 OpenAI 相容的 `/v1/audio/speech` 端點，改這裡就好、
 不用動引擎：
 
 ```js
@@ -65,6 +73,9 @@ narration: {
 換了引擎**影片會重新錄**，步調自動對齊新語速，字幕也跟著重算——這是刻意的，
 不同引擎唸同一句話長度不一樣，沿用舊影片一定會對不齊。
 
+同一句話、同樣參數合成過就會用快取（`~/.cache/screencast/tts`），調 scenario 重錄
+不會重複付費。要強制重新合成就設 `narration.cache: false`。
+
 ⚠️ 本地 TTS 服務記得綁 `0.0.0.0` 而不是只綁 localhost，否則從別台機器連不到。
 
 帳密走環境變數，不要寫進 scenario：
@@ -73,8 +84,16 @@ narration: {
 SCREENCAST_USER=xxx SCREENCAST_PASS=yyy node ~/.claude/skills/screencast/run.mjs scenarios/xxx.mjs
 ```
 
+## 開發
+
+```bash
+npm test    # 單元＋端對端，全部離線：本地 fixture 網頁＋假 TTS，不花錢
+```
+
+端對端測試會真的開 Chromium 錄影並用 ffmpeg 轉檔，需要先做完上面的安裝步驟。
+
 ## 寫新的操作教學
 
 複製 [`examples/example-scenario.mjs`](examples/example-scenario.mjs) 改 `steps` 陣列。
-完整格式與四種 step type 說明見 [`SKILL.md`](SKILL.md)，或直接叫 Claude Code 用
+完整格式與五種 step type 說明見 [`SKILL.md`](SKILL.md)，或直接叫 Claude Code 用
 `screencast` skill 幫你寫。

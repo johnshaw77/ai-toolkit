@@ -227,3 +227,45 @@ git status                       → 不輸出
 **沒驗到的**：npm／go／cargo 的 `already_ran` 樣式（只驗了 pytest）；
 真實 session 裡的無人值守跑一輪。
 
+
+## 2026-09-28　screencast：測試網與第一輪優化
+
+環境：macOS、Node 22.21.0、Playwright 1.63（Chromium headless）、Homebrew ffmpeg
+（有 libx264／libopus／aac）。
+
+`npm test`（`node --test 'test/*.test.mjs'`）：**44 個測試全過**，完整跑 4 次都是全綠
+（加 CLI 測試前是 43 個，連跑 4 次）。
+
+| # | 檔案 | 測試數 | 涵蓋 |
+|---:|---|---:|---|
+| 1 | `subtitles.test.mjs` | 8 | 時間戳格式、起點用 `narrationStartMs`、切句與比例分配、舊 manifest 回推 |
+| 2 | `locate.test.mjs` | 7 | regex 跳脫、定位優先順序、fill 不拿 text 定位、`value`／`text` 相容 |
+| 3 | `narration.test.mjs` | 12 | 假 TTS、Authorization 規則、HTTP 錯誤、連線失敗訊息、mp3 副檔名、快取命中／不命中／損毀 |
+| 4 | `out-dir.test.mjs` | 5 | 標記檔、舊版 manifest、拒絕刪除不相干資料夾 |
+| 5 | `manifest-to-srt.test.mjs` | 2 | 舊錄影補字幕（用 ffprobe 量 wav 回推） |
+| 6 | `cursor.test.mjs` | 3 | 游標掛在 `<html>`、跟著移動、換頁後留在原位、漣漪 |
+| 7 | `e2e.test.mjs` | 7 | 完整錄一支、dry-run、快取重錄、失敗中止、`abortOnError:false`、outDir 防呆、CLI exit code |
+
+**確認測試抓得到舊 bug**：
+
+- 把 `lib/cursor-overlay.mjs` 換回 HEAD 版本跑 `cursor.test.mjs`：「換頁後游標留在原位」
+  失敗，actual `translate(-4000px, -4000px)`（游標在畫面外）。換回新版通過。
+- fixture 輪詢頁用舊的 `waitUntil: 'networkidle'`（逾時 8 秒）：`page.goto` 逾時。
+  新版同一頁的 goto 步驟 2.7 秒完成。
+- 游標測試單獨跑 6 次全過，但跟 e2e 平行跑時失敗 1 次（游標元素是 null），
+  追到 rAF 初始化時序的問題，修掉後完整 suite 連跑 4 次全過。
+
+**e2e 產物實際檢查**（ffprobe＋抽影格目視）：
+
+- `demo.webm` 只有 vp8；`demo-narrated.webm` 是 vp8＋opus；`demo.mp4` 是 h264＋aac，
+  長度與 narrated 相差 < 0.5 秒；webm 長度與 manifest `totalMs` 相差 < 2 秒。
+- 抽 6 張影格：假游標在每張都看得到；姓名、email 有逐字打出；點「下一頁」換到
+  第二頁後，游標停在點擊位置（修正前這張會沒有游標）。
+- 字幕：第一張字卡 `00:00:02,738` = 第一句 `narrationStartMs` 2738；長句被切成 3 張、
+  首尾相接。
+
+**向下相容**：`jnxstudio-tour` 原本的 8 個 steps（真實網站 jnxstudio.com），用
+`--dry-run` 跑：8 步全部對得到、exit 0、13 秒。
+
+**沒驗到的**：kokoro engine 與真正的 OpenAI API（沒有打真的 TTS）；
+真的內部系統（Vue、有登入）還沒錄過；Windows。

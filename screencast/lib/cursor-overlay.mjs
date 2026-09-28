@@ -1,16 +1,18 @@
 // 注入到頁面裡的假游標 + 點擊漣漪。掛在 <html> 而不是 <body>，
-// 避開框架 App 容器常見的 CSS transform 讓 position:fixed 失效的坑；
-// 且用 requestAnimationFrame 重試到 documentElement 存在，因為
-// addInitScript 在 document_start 執行時 documentElement 有時還是 null。
+// 避開框架 App 容器常見的 CSS transform 讓 position:fixed 失效的坑。
+//
+// addInitScript 在 document_start 執行時 documentElement 有時還是 null，
+// 所以 DOM 等到 DOMContentLoaded 才掛；但 mousemove 監聽與 __pwClickRipple
+// 一開始就要就位（window 一定在）。以前是用 requestAnimationFrame 重試到
+// documentElement 出現才整段初始化，headless 在忙的時候 rAF 會拖到 load 之後，
+// 這段期間的滑鼠移動全部漏接，游標就停在畫面外。
+//
+// 最後位置記在 sessionStorage：點連結換頁後 script 會在新頁面重新注入，
+// 不記的話游標會停在畫面外，直到下一次 mousemove 才出現——
+// 觀眾看到的就是「點完之後游標消失了」。
 export const CURSOR_INIT_SCRIPT = `
 (() => {
   function init() {
-    if (!document.documentElement) {
-      requestAnimationFrame(init);
-      return;
-    }
-    const root = document.documentElement;
-
     const style = document.createElement('style');
     style.textContent = \`
       @keyframes __pw_ripple_anim {
@@ -26,9 +28,20 @@ export const CURSOR_INIT_SCRIPT = `
     const ripple = document.createElement('div');
     ripple.id = '__pw_fake_ripple';
     cursor.style.cssText = 'position:fixed;top:0;left:0;width:24px;height:24px;pointer-events:none;z-index:2147483647;transform:translate(-4000px,-4000px);';
+    const POS_KEY = '__pw_fake_cursor_pos';
+    function place(x, y) {
+      cursor.style.transform = 'translate(' + (x - 2) + 'px,' + (y - 2) + 'px)';
+    }
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(POS_KEY) || 'null');
+      if (saved) place(saved.x, saved.y);
+    } catch (e) {
+      // sessionStorage 在某些頁面（sandbox iframe、about:blank）不能用，沒記到就算了
+    }
     ripple.style.cssText = 'position:fixed;top:0;left:0;width:40px;height:40px;margin-left:-20px;margin-top:-20px;border-radius:50%;background:rgba(255,100,50,0.55);pointer-events:none;z-index:2147483646;opacity:0;';
 
     function mount() {
+      const root = document.documentElement;
       root.appendChild(style);
       root.appendChild(cursor);
       root.appendChild(ripple);
@@ -37,7 +50,12 @@ export const CURSOR_INIT_SCRIPT = `
     else document.addEventListener('DOMContentLoaded', mount, { once: true });
 
     window.addEventListener('mousemove', (e) => {
-      cursor.style.transform = 'translate(' + (e.clientX - 2) + 'px,' + (e.clientY - 2) + 'px)';
+      place(e.clientX, e.clientY);
+      try {
+        sessionStorage.setItem(POS_KEY, JSON.stringify({ x: e.clientX, y: e.clientY }));
+      } catch (err) {
+        // 同上
+      }
     }, true);
 
     window.__pwClickRipple = (x, y) => {

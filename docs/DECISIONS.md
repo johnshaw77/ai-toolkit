@@ -120,3 +120,76 @@ Web／後端完成定義要求它自己跑。
 接受這個代價——要求一定跑全套，會回到每回合重跑的老問題；而且下一項改檔後
 又會重新判斷。
 
+
+---
+
+## 2026-09-28　screencast：補測試網與第一輪優化
+
+### 測試用 `node:test`，fixture 網站與假 TTS 都在本地
+
+不加測試框架（Node 22 內建的就夠）。端對端測試對一個本地 fixture 網頁跑完整 scenario，
+TTS 則由同一個本地 server 假扮 OpenAI 相容端點、回靜音 wav。這樣測試離線可跑、
+不花錢、結果可預測。
+
+**代價**：沒測到 kokoro 路徑與真正的 OpenAI；假 TTS 的 wav 跟真實回應格式可能有差。
+真實網站的相容性改用 `--dry-run` 手動驗。
+
+### `fill` 的輸入內容改叫 `value`，但 `text` 繼續當內容用
+
+`text` 同時是「定位用的可見文字」和「fill 要打的字」，fill 沒寫 selector 時會拿
+要打的字去頁面上找元素。改成 fill 一律不拿 `text` 定位（沒有定位方式就明確報錯），
+內容優先讀 `value`、沒有才讀 `text`。另加 `placeholder` 定位，輸入框最常用的就是它。
+
+**代價**：fill 不能再用可見文字定位輸入框（本來就不合理，輸入框沒有可見文字）。
+舊 scenario 全部相容。
+
+### `role` 的 `name` 字串改成跳脫後比對
+
+以前直接 `new RegExp(name)`，「儲存 (Ctrl+S)」這種名稱會比對失敗。字串一律跳脫、
+維持「包含」語意；真的要 regex 就傳 RegExp 物件，要完全相同就加 `exact: true`。
+
+**代價**：如果有舊 scenario 故意在字串裡寫 regex（例如 `name: '^送出$'`），行為會變。
+目前已知的 scenario 都沒有這樣寫。
+
+### `goto` 預設等到 `load`，再盡量等 networkidle 兩秒
+
+以前固定 `networkidle`，有輪詢或 WebSocket 的頁面會一路卡到 30 秒逾時（fixture 實測
+確認會逾時）。改成 load 之後再最多等兩秒網路安靜：一般 SPA 的初始資料在這段時間
+會回來，永遠不安靜的頁面也只多等兩秒。可用 `scenario.waitUntil` 或 step 的
+`waitUntil` 改回來。非同步載入的內容改用新的 `waitFor` step 等，不要猜毫秒數。
+
+**代價**：輪詢頁的每次 goto 固定多 2 秒。
+
+### TTS 快取放在 `~/.cache/screencast/tts`，不放在 outDir
+
+outDir 每次錄都會整個刪掉，放裡面等於沒快取。key 是文字＋所有影響聲音的參數
+（engine、voice、model、speed、baseUrl、format、extraBody）的 sha256；`apiKeyEnv`
+不算。`openai` 與 `openai-compatible` 視為同一種。
+
+**代價**：快取不會自己清，會慢慢長大（一句話約幾十 KB，一年錄幾百支也才幾十 MB）。
+TTS 服務端換了模型但參數沒變時會拿到舊聲音——要重錄新聲音就設 `cache: false`
+或刪快取資料夾。
+
+### 預設多轉一份 `demo.mp4`
+
+`.webm` 在 PowerPoint、LINE、Teams、公司的 Windows 電腦常常播不了，而影片的觀眾是
+非技術同事。H.264＋AAC、yuv420p、`+faststart`。
+
+**代價**：每支多花幾秒編碼；不要的話設 `output: { mp4: false }`。
+
+### outDir 只刪「看得出是自己產出的」資料夾
+
+以前 `fs.rmSync(outDir)` 不做任何檢查，outDir 不小心指到專案根目錄就全刪光。
+現在建立 outDir 時放一個 `.screencast-out` 標記檔，只有空資料夾、有標記檔，或有
+舊版留下的 `manifest.json` 才會刪；其他情況在開瀏覽器前就報錯。
+
+**代價**：之前手動建好、放了別的東西的資料夾不能直接當 outDir。不在原本談好的範圍內，
+但這是不可逆的資料損失，成本只有十幾行，所以一起做了。
+
+### 游標 overlay 不再用 requestAnimationFrame 等 documentElement
+
+平行跑測試時抓到的：documentElement 還是 null 時，以前會用 rAF 重試到它出現才
+「整段」初始化，headless 在忙的時候 rAF 會拖到頁面 load 之後，這段期間的
+mousemove 全部漏接。現在監聽器一開始就掛在 window，只有「把 DOM 掛上去」這件事
+等 DOMContentLoaded。另把游標最後位置記在 sessionStorage，點連結換頁後游標
+留在原位，不會消失到下一次移動才出現。

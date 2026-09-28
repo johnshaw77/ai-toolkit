@@ -57,17 +57,31 @@ uv pip install --python .venv/bin/python kokoro-onnx soundfile
 
 2. **在目標專案裡寫一份 scenario 檔**（不是在這個 skill 目錄下！）。參考
    `examples/example-scenario.mjs` 的格式，通常放在該專案一個明顯的地方（例如
-   `lab/screencast/scenarios/`，或使用者指定的目錄）。四種 step type：
+   `lab/screencast/scenarios/`，或使用者指定的目錄）。五種 step type：
 
    | type | 欄位 | 說明 |
    |---|---|---|
-   | `goto` | `url`, `label` | 導覽；`url` 可以是完整網址，也可以是相對路徑（接在 `scenario.baseUrl` 後面） |
-   | `fill` | `selector`\|`role`+`name`\|`text`, `text`, `label` | 定位輸入框後清空、打字（有打字動畫） |
-   | `click` | `selector`\|`role`+`name`\|`text`, `label` | 移動游標（平滑、非瞬移）→ 漣漪 → 點擊 |
+   | `goto` | `url`, `waitUntil`, `label` | 導覽；`url` 可以是完整網址，也可以是相對路徑（接在 `scenario.baseUrl` 後面） |
+   | `fill` | `selector`\|`role`+`name`\|`placeholder`, `value`, `label` | 定位輸入框後清空、打字（有打字動畫） |
+   | `click` | `selector`\|`role`+`name`\|`placeholder`\|`text`, `label` | 移動游標（平滑、非瞬移）→ 漣漪 → 點擊 |
+   | `waitFor` | `selector`\|`role`+`name`\|`placeholder`\|`text`, `state`, `timeout`, `label` | 等某個元素出現（`state` 預設 `visible`，也可以 `hidden`／`attached`／`detached`） |
    | `wait` | `ms`, `label` | 純停留，讓畫面有時間被看清楚 |
 
-   定位元素三選一，**選最不會撞到頁面上其他元素的那種**：純文字比對（`text`）容易連父層或
-   同樣文字的標題一起選到，這時候改用 `role`+`name`（例如登入按鈕文字跟頁面標題都含「登入」時）。
+   定位方式（依優先順序取第一個有寫的），**選最不會撞到頁面上其他元素的那種**：
+   - `selector`：CSS selector，最穩。
+   - `role`+`name`：ARIA role 加可見名稱，名稱做「包含」比對，括號加號等特殊字元不用跳脫。
+     要完全相同加 `exact: true`；要 regex 就直接傳 RegExp（`name: /^送出$/`）。
+   - `placeholder`：輸入框的 placeholder，填表單最好用。
+   - `text`：可見文字。容易連父層或同樣文字的標題一起選到，這時候改用 `role`+`name`
+     （例如登入按鈕文字跟頁面標題都含「登入」時）。**`fill` 不吃 `text` 定位**——
+     fill 要打的字寫在 `value`（舊 scenario 寫在 `text` 也照樣當內容用）。
+
+   **等畫面載入用 `waitFor`，不要用 `wait` 猜毫秒數。** 按下送出後結果要等 API 回來才出現，
+   `{ type: 'waitFor', text: '儲存成功' }` 會等到它真的出現（最久 `scenario.timeout`，預設 15 秒）。
+
+   `goto` 預設等到 `load`，再最多等 2 秒網路安靜。以前固定等 `networkidle`，遇到有輪詢或
+   WebSocket 的系統會卡到逾時。真的需要可以設 `scenario.waitUntil` 或 step 的 `waitUntil`
+   （`'load'`／`'domcontentloaded'`／`'networkidle'`／`'commit'`）。
 
    **任何一種 type 都可以再加一個 `narration: '一句口白'`。** 有 narration 的步驟會：
    合成語音 → 量出實際秒數 → 動作做完後用這個秒數當停留時間（`wait` 型步驟則完全用這個
@@ -99,6 +113,11 @@ uv pip install --python .venv/bin/python kokoro-onnx soundfile
    CosyVoice）大多有這個相容端點；沒有的話，包一層三十行的 HTTP wrapper 就好——
    這邊對 TTS 的要求只有「文字進、音檔出」，長度是收到檔案後自己 ffprobe 量的。
 
+   **旁白有快取**：同一句話、同樣參數（engine、voice、model、speed、baseUrl…）合成過就直接用，
+   放在 `~/.cache/screencast/tts`（`SCREENCAST_CACHE_DIR` 可改）。調 selector 重錄不會重複
+   付費或等待。`narration.cache: false` 關掉；TTS 服務端換了模型但參數沒變時要記得關掉或
+   刪快取，不然會拿到舊聲音。
+
    API key 的規則：**官方網址一定要有**（沒有直接報錯，不會送出去才發現）；
    自訂 `baseUrl` 則是有就帶 `Authorization`、沒有就不帶。
 
@@ -116,21 +135,30 @@ uv pip install --python .venv/bin/python kokoro-onnx soundfile
    OPENAI_API_KEY=sk-... node ~/.claude/skills/screencast/run.mjs scenarios/xxx.mjs
    ```
 
-3. **跑**：
+3. **先 dry-run，再正式跑**：
 
    ```bash
-   node ~/.claude/skills/screencast/run.mjs <目標專案裡的 scenario 檔路徑>
+   node ~/.claude/skills/screencast/run.mjs --dry-run <scenario 檔路徑>   # 幾秒，確認都對得到
+   node ~/.claude/skills/screencast/run.mjs <scenario 檔路徑>             # 正式錄
    ```
+
+   dry-run 不錄影、不合成語音、游標不做動畫，也**不動 outDir**（輸出放在系統暫存資料夾，
+   路徑會印出來），有失敗一樣會存 `error-step-N.png`。有步驟失敗時兩者的 exit code 都是 1。
 
    輸出固定在 scenario 檔旁邊的 `out/<資料夾名>/`（由 scenario 的 `outDir` 決定）：
    - `demo.webm` — 錄影（無聲）
    - `demo-narrated.webm` — 疊了旁白音軌的版本（有 `narration` 才會產生）
+   - `demo.mp4` — H.264＋AAC，有旁白就帶聲音。**要交給別人看就給這個**，`.webm` 在
+     PowerPoint、LINE、Teams、Windows 常常播不了。`output: { mp4: false }` 關掉
    - `narration/step-N.wav` — 每句旁白的原始音檔
    - `demo.srt` / `demo.vtt` — 字幕（有 `narration` 才會產生）
    - `final.png` — 最後一步的截圖
    - `manifest.json` — 每一步相對影片開頭的起訖毫秒數，外加旁白自己的
      `narrationStartMs` / `narrationDurationMs`
    - 若某步失敗：`error-step-N.png`
+
+   outDir 會被整個刪掉重建，但有防呆：裡面有不是 screencast 產出的東西（沒有
+   `.screencast-out` 標記檔、也沒有 `manifest.json`）就拒絕執行，不會刪。
 
 4. **檢查 manifest.json**，確認每一步 `ok` 都是 `true`。有步驟失敗就看對應的
    `error-step-N.png` 截圖，通常是 selector/文字沒對到（改用另一種定位方式）或畫面還沒載完
@@ -186,12 +214,17 @@ ffmpeg -i demo-narrated.webm -i demo.vtt -map 0 -map 1 -c copy -c:s webvtt \
   監聽 Playwright 送出的合成 `mousemove` 定位。兩個容易讓它「完全不出現」的坑，
   `lib/cursor-overlay.mjs` 裡已經修掉，改動這份檔案時要留意別踩回去：
   1. `addInitScript` 在 `document_start` 執行時 `document.documentElement` 有時還是
-     `null`，直接操作會整段 script 丟例外、後面全部不執行——要用
-     `requestAnimationFrame` 重試到它存在為止。
+     `null`，直接操作會整段 script 丟例外、後面全部不執行。但也**不要**用
+     `requestAnimationFrame` 重試到它出現才整段初始化——headless 忙的時候 rAF 會拖到
+     load 之後，這段期間的 mousemove 全部漏接。現在的做法：`mousemove` 監聽一開始就
+     掛在 `window`，只有把 DOM 掛上去這件事等 `DOMContentLoaded`。
   2. 掛在 `document.body` 而非 `document.documentElement`，容易被頁面框架某層容器的
      CSS `transform` 影響，讓 `position: fixed` 的定位基準跑掉，游標飄到看不到的地方。
+- 游標位置記在 `sessionStorage`，點連結換頁後新頁面會把游標放回原位；跨網域換頁
+  拿不到（sessionStorage 分網域），游標會等下一次移動才出現。
 - `page.video().saveAs()` 要在 `context.close()` 之後、`browser.close()` 之前呼叫，
   順序反了會丟 `Target page, context or browser has been closed`。
+- 改引擎之後跑 `npm test`（單元＋端對端，離線，本地 fixture 網頁＋假 TTS）。
 - 目前只支援單一組登入資訊、單一分頁的線性流程；多分頁、跳出視窗、iframe 內操作等
   複雜情境沒驗證過，遇到了先手動測一輪確認可行再寫進 scenario。
 - 旁白目前只支援「照順序、不重疊」——一句唸完才進下一步，不支援兩句同時疊音或

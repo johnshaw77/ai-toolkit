@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <title>screencast fixture</title>
+  <style>
+    body { font-family: sans-serif; padding: 40px; }
+    label, input, button { display: block; margin: 12px 0; font-size: 18px; }
+    input { padding: 6px; width: 320px; }
+    /* 讓連結落在需要捲動的位置，驗證 scrollIntoViewIfNeeded */
+    .spacer { height: 1200px; }
+  </style>
+</head>
+<body>
+  <h1>表單示範</h1>
+  <!-- 標題也含「儲存」兩個字：用 text 定位會撞到，要用 role+name -->
+  <h2>儲存之前請確認資料</h2>
+  <input id="name" placeholder="請輸入姓名">
+  <input id="email" name="email" placeholder="Email">
+  <!-- 名字含括號與加號：沒跳脫就丟進 RegExp 會比對失敗 -->
+  <button id="save">儲存 (Ctrl+S)</button>
+  <p id="result" hidden></p>
+  <div class="spacer"></div>
+  <a href="page2.html">下一頁</a>
+
+  <script>
+    document.getElementById('save').addEventListener('click', () => {
+      // 模擬打 API：結果晚一點才出現，要靠 waitFor 等，不能靠固定毫秒
+      setTimeout(() => {
+        const p = document.getElementById('result');
+        p.textContent = '已儲存：' + document.getElementById('name').value;
+        p.hidden = false;
+      }, 800);
+    });
+    // 模擬有輪詢的系統：網路永遠不會安靜，硬等 networkidle 會卡到逾時
+    setInterval(() => fetch('/poll').catch(() => {}), 300);
+  </script>
+</body>
+</html>

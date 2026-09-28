@@ -1,52 +1,75 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { CURSOR_INIT_SCRIPT } from './cursor-overlay.mjs';
+import { encodeMp4 } from './encode.mjs';
+import { fillValue, locate } from './locate.mjs';
 import { synthesizeNarration, muxNarration } from './narration.mjs';
 import { cuesFromManifest, writeSubtitles } from './subtitles.mjs';
 
+// 錄影時的節奏：游標平滑移動、點擊有停頓、打字有速度感，觀眾才看得清楚。
+const RECORD_PACE = {
+  moveSteps: 30, afterMove: 220, clickHold: 90, afterClick: 500, typeDelay: 55, afterType: 300,
+};
+// dry-run 只是確認 selector 都對得到，不需要給人看，全部壓到最短。
+const DRY_RUN_PACE = {
+  moveSteps: 1, afterMove: 0, clickHold: 0, afterClick: 0, typeDelay: 0, afterType: 0,
+};
+
+// outDir 裡放這個檔，下次才敢整個刪掉重建——避免 outDir 不小心指到專案根目錄
+// 或別的資料夾時，一跑就把裡面的東西全刪光。
+const OUT_MARKER = '.screencast-out';
+
 /**
- * 定位一個 step 指到的元素。三選一：
- *   selector — CSS selector
- *   role     — ARIA role（可搭配 name 用文字/正則篩選）
- *   text     — 用可見文字找（getByText）
+ * 清空並重建 outDir。只有在資料夾不存在、是空的、或者看得出是之前的錄影輸出
+ * （有標記檔，或舊版留下的 manifest.json）時才動手，否則拒絕。
  */
-function locate(page, step) {
-  if (step.selector) return page.locator(step.selector).first();
-  if (step.role) return page.getByRole(step.role, step.name ? { name: new RegExp(step.name) } : undefined).first();
-  if (step.text) return page.getByText(step.text, { exact: step.exact ?? false }).first();
-  throw new Error(`step "${step.label ?? step.type}" 缺少 selector / role / text 其中一種定位方式`);
+export function prepareOutDir(outDir) {
+  if (fs.existsSync(outDir)) {
+    const entries = fs.readdirSync(outDir).filter((f) => f !== '.DS_Store');
+    const looksLikeOurs = entries.includes(OUT_MARKER) || entries.includes('manifest.json');
+    if (entries.length && !looksLikeOurs) {
+      throw new Error(
+        `outDir 不是空的，也不像之前的錄影輸出，拒絕整個刪掉：${outDir}\n` +
+        '    請把 outDir 指到一個專用的資料夾（例如 scenario 旁邊的 out/<名稱>）',
+      );
+    }
+  }
+  fs.rmSync(outDir, { recursive: true, force: true });
+  fs.mkdirSync(outDir, { recursive: true });
+  fs.writeFileSync(path.join(outDir, OUT_MARKER), '這個資料夾是 screencast 的輸出，每次錄影都會整個刪掉重建。\n');
 }
 
-async function moveTo(page, point) {
-  await page.mouse.move(point.x, point.y, { steps: 30 });
-  await page.waitForTimeout(220);
+async function moveTo(page, point, pace) {
+  await page.mouse.move(point.x, point.y, { steps: pace.moveSteps });
+  if (pace.afterMove) await page.waitForTimeout(pace.afterMove);
 }
 
-async function moveToLocator(page, locator) {
+async function moveToLocator(page, locator, pace) {
   await locator.scrollIntoViewIfNeeded();
   const box = await locator.boundingBox();
   if (!box) throw new Error('元素不可見，抓不到座標');
   const x = box.x + box.width / 2;
   const y = box.y + box.height / 2;
-  await moveTo(page, { x, y });
+  await moveTo(page, { x, y }, pace);
   return { x, y };
 }
 
-async function clickWithCursor(page, locator) {
-  const { x, y } = await moveToLocator(page, locator);
+async function clickWithCursor(page, locator, pace) {
+  const { x, y } = await moveToLocator(page, locator, pace);
   await page.evaluate(([x, y]) => window.__pwClickRipple?.(x, y), [x, y]);
   await page.mouse.down();
-  await page.waitForTimeout(90);
+  if (pace.clickHold) await page.waitForTimeout(pace.clickHold);
   await page.mouse.up();
-  await page.waitForTimeout(500);
+  if (pace.afterClick) await page.waitForTimeout(pace.afterClick);
 }
 
-async function typeWithCursor(page, locator, text) {
-  await clickWithCursor(page, locator);
+async function typeWithCursor(page, locator, text, pace) {
+  await clickWithCursor(page, locator, pace);
   await locator.fill('');
-  await page.keyboard.type(text, { delay: 55 });
-  await page.waitForTimeout(300);
+  await page.keyboard.type(text, { delay: pace.typeDelay });
+  if (pace.afterType) await page.waitForTimeout(pace.afterType);
 }
 
 /**
@@ -58,13 +81,17 @@ async function typeWithCursor(page, locator, text) {
  *     viewport: { width, height }       // 預設 1440x900
  *     outDir: '路徑'                     // 影片/截圖/manifest 輸出位置
  *     abortOnError: true/false          // 預設 true：某步驟失敗就整支中止
- *     narration: { engine, voice, speed, baseUrl }  // 可省略，見下方 narration 欄位說明
+ *     timeout: 15000                    // 找元素、等畫面的逾時（毫秒）
+ *     waitUntil: 'load'                 // goto 等到哪個階段，見下方 goto 說明
+ *     narration: { engine, voice, speed, baseUrl, cache }  // 可省略
  *     subtitles: { enabled, maxCharsPerCue }   // 可省略，預設開啟、每張字卡 18 字
+ *     output: { mp4 }                   // 預設會多轉一份 demo.mp4
  *     steps: [
- *       { type: 'goto',   url, label, narration },
- *       { type: 'fill',   selector|role|text, text, label, narration },
- *       { type: 'click',  selector|role|text, label, narration },
- *       { type: 'wait',   ms, label, narration },
+ *       { type: 'goto',    url, waitUntil, label, narration },
+ *       { type: 'fill',    selector|role+name|placeholder, value, label, narration },
+ *       { type: 'click',   selector|role+name|placeholder|text, label, narration },
+ *       { type: 'waitFor', selector|role+name|placeholder|text, state, timeout, label },
+ *       { type: 'wait',    ms, label, narration },
  *     ]
  *   }
  *
@@ -76,42 +103,55 @@ async function typeWithCursor(page, locator, text) {
  * 有旁白就順便產出 demo.srt / demo.vtt —— 講稿跟時間戳錄的時候就都握在手上，
  * 不用事後跑語音辨識去對。
  *
- * 回傳 { videoPath, narratedVideoPath, manifestPath, manifest, srtPath, vttPath }。
+ * options.dryRun：只走一次流程確認每一步都對得到元素——不錄影、不合成語音、
+ * 不刪 outDir（輸出放到系統暫存資料夾），幾秒內就知道 scenario 能不能跑。
+ *
+ * 回傳 { ok, videoPath, narratedVideoPath, mp4Path, manifestPath, manifest, srtPath, vttPath, outDir }。
  * manifest 記錄每個 step 相對影片開頭的起訖時間（毫秒），以及旁白自己的起點與長度。
  */
-export async function runScenario(scenario) {
+export async function runScenario(scenario, { dryRun = false } = {}) {
   const {
     baseUrl = '',
     viewport = { width: 1440, height: 900 },
-    outDir,
     abortOnError = true,
+    timeout = 15000,
+    waitUntil: defaultWaitUntil = 'load',
     narration: narrationOpts = {},
     subtitles: subtitleOpts = {},
+    output: outputOpts = {},
     steps,
   } = scenario;
 
-  if (!outDir) throw new Error('scenario.outDir 必填');
-  fs.rmSync(outDir, { recursive: true, force: true });
-  fs.mkdirSync(outDir, { recursive: true });
+  if (!scenario.outDir) throw new Error('scenario.outDir 必填');
+  const outDir = dryRun
+    ? path.join(os.tmpdir(), `screencast-dry-run-${path.basename(scenario.outDir)}`)
+    : scenario.outDir;
+  prepareOutDir(outDir);
+  const pace = dryRun ? DRY_RUN_PACE : RECORD_PACE;
+  if (dryRun) console.log(`dry-run：不錄影、不合成語音，輸出在 ${outDir}`);
 
   // 先把有旁白的步驟全部合成好、量出時長——步驟停留多久由講稿長度決定，
   // 不是先錄影片再事後把語音塞進去對嘴。
   const narrationByIndex = new Map();
-  const narrationSteps = steps.map((s, i) => [i, s]).filter(([, s]) => s.narration);
+  const narrationSteps = dryRun ? [] : steps.map((s, i) => [i, s]).filter(([, s]) => s.narration);
   if (narrationSteps.length) {
     console.log(`合成 ${narrationSteps.length} 句旁白…`);
+    let hits = 0;
     for (const [i, step] of narrationSteps) {
       const wavPath = path.join(outDir, 'narration', `step-${i + 1}.wav`);
       const result = await synthesizeNarration(step.narration, wavPath, narrationOpts);
+      if (result.cached) hits++;
       narrationByIndex.set(i, result);
     }
+    if (hits) console.log(`  其中 ${hits} 句來自快取`);
   }
 
   const browser = await chromium.launch();
   const context = await browser.newContext({
     viewport,
-    recordVideo: { dir: outDir, size: viewport },
+    ...(dryRun ? {} : { recordVideo: { dir: outDir, size: viewport } }),
   });
+  context.setDefaultTimeout(timeout);
   await context.addInitScript(CURSOR_INIT_SCRIPT);
   const page = await context.newPage();
   page.on('pageerror', (err) => console.log('  [pageerror]', err.message));
@@ -134,15 +174,25 @@ export async function runScenario(scenario) {
       switch (step.type) {
         case 'goto': {
           const url = /^https?:\/\//.test(step.url) ? step.url : baseUrl + step.url;
-          await page.goto(url, { waitUntil: 'networkidle' });
-          await moveTo(page, { x: viewport.width / 2, y: viewport.height / 2 });
+          const waitUntil = step.waitUntil ?? defaultWaitUntil;
+          await page.goto(url, { waitUntil });
+          // 預設只等到 load，再「盡量」等網路安靜兩秒：SPA 的初始資料通常在這段
+          // 時間內就回來了；但有 WebSocket、輪詢的頁面永遠不會安靜，硬等
+          // networkidle 會一路卡到逾時。
+          if (waitUntil !== 'networkidle') {
+            await page.waitForLoadState('networkidle', { timeout: 2000 }).catch(() => {});
+          }
+          await moveTo(page, { x: viewport.width / 2, y: viewport.height / 2 }, pace);
           break;
         }
         case 'fill':
-          await typeWithCursor(page, locate(page, step), step.text ?? '');
+          await typeWithCursor(page, locate(page, step), fillValue(step), pace);
           break;
         case 'click':
-          await clickWithCursor(page, locate(page, step));
+          await clickWithCursor(page, locate(page, step), pace);
+          break;
+        case 'waitFor':
+          await locate(page, step).waitFor({ state: step.state ?? 'visible', timeout: step.timeout ?? timeout });
           break;
         case 'wait':
           if (!narrationAudio) await page.waitForTimeout(step.ms ?? 800);
@@ -162,7 +212,7 @@ export async function runScenario(scenario) {
       errorMessage = err.message;
       const shotPath = path.join(outDir, `error-step-${i + 1}.png`);
       await page.screenshot({ path: shotPath }).catch(() => {});
-      console.error(`  ✗ 失敗: ${errorMessage}（截圖存在 ${shotPath}）`);
+      console.error(`  ✗ 失敗: ${errorMessage.split('\n')[0]}（截圖存在 ${shotPath}）`);
     }
 
     manifest.push({
@@ -188,8 +238,11 @@ export async function runScenario(scenario) {
   const video = page.video();
   await context.close();
 
-  const videoPath = path.join(outDir, 'demo.webm');
-  if (video) await video.saveAs(videoPath);
+  let videoPath;
+  if (video) {
+    videoPath = path.join(outDir, 'demo.webm');
+    await video.saveAs(videoPath);
+  }
   await browser.close();
 
   // saveAs() 是複製，不是搬移 —— 清掉 Playwright 用 hash 命名的原始檔，只留 demo.webm。
@@ -200,12 +253,12 @@ export async function runScenario(scenario) {
   }
 
   const manifestPath = path.join(outDir, 'manifest.json');
-  fs.writeFileSync(manifestPath, JSON.stringify({ steps: manifest, totalMs: Date.now() - t0 }, null, 2));
+  fs.writeFileSync(manifestPath, JSON.stringify({ steps: manifest, totalMs: Date.now() - t0, dryRun }, null, 2));
 
   // 字幕直接從 manifest 推出來，不用再打一次 TTS——文字跟時間戳錄的時候就都有了。
   let srtPath;
   let vttPath;
-  if (subtitleOpts.enabled !== false) {
+  if (!dryRun && subtitleOpts.enabled !== false) {
     const cues = cuesFromManifest(manifest, { maxCharsPerCue: subtitleOpts.maxCharsPerCue ?? 18 });
     ({ srtPath, vttPath } = writeSubtitles(outDir, cues, subtitleOpts.basename ?? 'demo'));
     if (srtPath) console.log(`字幕: ${srtPath}（${cues.length} 張字卡）`);
@@ -224,11 +277,28 @@ export async function runScenario(scenario) {
     }
   }
 
+  // mp4 從「最完整的那一支」轉：有旁白用帶聲音的版本，沒有就用無聲的。
+  let mp4Path;
+  if (videoPath && outputOpts.mp4 !== false) {
+    mp4Path = path.join(outDir, 'demo.mp4');
+    try {
+      encodeMp4(narratedVideoPath ?? videoPath, mp4Path);
+      console.log('mp4:', mp4Path);
+    } catch (err) {
+      mp4Path = undefined;
+      console.error('  ✗ 轉 mp4 失敗（webm 沒事）:', err.message.split('\n')[0]);
+      console.error('    需要編了 libx264 的 ffmpeg：brew install ffmpeg');
+    }
+  }
+
   const failed = manifest.filter((m) => !m.ok);
-  console.log(failed.length ? `完成，但有 ${failed.length} 步失敗` : '完成，全部步驟成功');
-  console.log('影片:', videoPath);
+  const skipped = steps.length - manifest.length;
+  const ok = failed.length === 0 && skipped === 0;
+  if (ok) console.log(dryRun ? 'dry-run 通過，全部步驟都對得到' : '完成，全部步驟成功');
+  else console.log(`完成，但有 ${failed.length} 步失敗${skipped ? `、${skipped} 步因中止沒有執行` : ''}`);
+  if (videoPath) console.log('影片:', videoPath);
   if (narratedVideoPath) console.log('帶旁白的影片:', narratedVideoPath);
   console.log('manifest:', manifestPath);
 
-  return { videoPath, narratedVideoPath, manifestPath, manifest, srtPath, vttPath };
+  return { ok, outDir, videoPath, narratedVideoPath, mp4Path, manifestPath, manifest, srtPath, vttPath };
 }
