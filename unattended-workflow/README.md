@@ -52,10 +52,11 @@
 
 | # | 工具 | 用途 | 沒有的話 |
 |---:|---|---|---|
-| 1 | `bash` | 三個 hook 都是 bash 腳本 | **完全不會運作** |
+| 1 | `bash` | 四個 hook 都是 bash 腳本 | **完全不會運作** |
 | 2 | `jq` | hook 解析輸入、輸出 JSON | **完全不會運作**（對話開始時會顯示提示） |
 | 3 | `python3` 或 `python` | 對話紀錄轉 HTML（只用標準庫，不必 `pip install`） | 只有存檔失效，其餘正常 |
 | 4 | `tmux` | `unattended` 指令在背景跑、可以脫離再接上 | 改用 `--no-tmux` 前景執行 |
+| 5 | Claude in Chrome 擴充功能（Chrome 線上應用程式商店搜尋 Claude） | UI 改動的瀏覽器驗證（Web 完成定義、守門員都要求） | 改到 `.vue`、`.tsx` 等畫面檔時守門員會擋一次，Claude 會回報「UI 未經瀏覽器驗證」 |
 
 **macOS**：
 
@@ -260,7 +261,7 @@ Claude 想結束回合時攔一次，檢查三件事：
 | 偵測到 | 執行 |
 |---|---|
 | `package.json` | `npm run test`、`npm run typecheck`（有才跑） |
-| `pyproject.toml` / `pytest.ini` | `pytest -q` |
+| `pyproject.toml` / `pytest.ini` | `pytest -q`，依序找 `.venv`、`venv`、`uv run`（有 `uv.lock` 時）、PATH；**有測試檔卻都找不到 pytest 會擋下**，不會跳過 |
 | `go.mod` | `go test ./...` |
 | `Cargo.toml` | `cargo test` |
 
@@ -307,6 +308,21 @@ Claude 想結束回合時攔一次，檢查三件事：
 - **把對話存檔打開**（建立 `docs/transcripts/`）——無人值守正是最需要事後
   調閱的情境，而多數人不會記得另外去開。
 - 檢查 git：不是 repo 會問要不要 `git init`；還在 `main` 上會幫你開分支。
+
+#### 守衛：最傷的幾條不只是文字
+
+上表的「永遠不 push」之類是注入的準則，模型遵守的機率再高也不是 100%，
+而 `--loop` 又是用 `bypassPermissions` 跑，沒有人會看到權限詢問。
+所以 `PreToolUse` hook（`hooks/guard.sh`）在 Bash 指令執行前直接攔：
+
+| 指令 | 互動開發 | 無人值守 |
+|---|---|---|
+| `git push` | 跳確認 | 拒絕 |
+| `docker compose down -v`（`--volumes`） | 跳確認 | 拒絕 |
+| 在預設分支（`main`／`master`）上 `git commit` | 不管 | 拒絕 |
+
+判斷的是每一段指令的**子指令**，不是整串字：`git commit -m "修正 push 通知"`
+不會被當成 push。包在 `bash -c "…"` 或腳本檔裡的指令攔不到——它是安全網，不是沙箱。
 
 ⚠️ **標記檔記得刪**，否則那個專案之後每次對話都會是無人值守。
 不確定就跑 `/unattended:mode status`。
@@ -539,6 +555,7 @@ plugin 本身沒有為此新增功能。多數 side project 其實不值得拆�
 ```
 hooks/
   session-start.sh        注入常駐準則 + 偵測無人值守模式
+  guard.sh                PreToolUse：攔 git push、down -v、無人值守時在 main 上 commit
   verify-gate.sh          Stop：測試沒綠、UI 沒驗過就擋
   archive-transcript.sh   Stop：更新這場對話的 HTML／SessionEnd：整個專案重掃
 commands/

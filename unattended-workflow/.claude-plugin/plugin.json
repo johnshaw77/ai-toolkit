@@ -1,6 +1,6 @@
 {
   "name": "unattended",
-  "version": "0.23.0",
+  "version": "0.24.0",
   "description": "Unattended-friendly workflow for Claude Code: always-on decision and completion rules, a Stop-hook gate that blocks finishing until tests are green and UI changes were verified in a browser, an interactive/unattended mode switch, and automatic HTML archiving of every conversation.",
   "author": {
     "name": "john_hsiao"

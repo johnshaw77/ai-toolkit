@@ -30,7 +30,7 @@ claude plugin update unattended    # 然後重開 Claude Code（hook 在對話�
 
 ### 手動跑 hook
 
-三個 hook 都是「stdin 吃一包 JSON、stdout 吐一包 JSON」，可以直接餵：
+四個 hook 都是「stdin 吃一包 JSON、stdout 吐一包 JSON」，可以直接餵：
 
 ```bash
 export CLAUDE_PLUGIN_ROOT="$PWD"
@@ -63,7 +63,7 @@ python3 scripts/transcript2html.py --index             # 只重建全域索引
 
 ## 架構
 
-三個 hook + 四個指令 + 兩支腳本（轉檔、安裝），靠**兩個標記檔**串起來：
+四個 hook + 四個指令 + 兩支腳本（轉檔、安裝），靠**兩個標記檔**串起來：
 
 ```
 .claude/UNATTENDED        存在 ＝ 無人值守模式
@@ -88,6 +88,28 @@ Plugin 無法寫入使用者的 `~/.claude/CLAUDE.md`，所以那些「每個專
 
 **要改通用工作準則，就是改這個字串**，不是改各專案的 CLAUDE.md。
 README「它做五件事」那節與這段字串是同一份內容的兩個複本——改一邊要同步另一邊。
+
+### hooks/guard.sh —— PreToolUse 守衛（只掛 Bash）
+
+把注入準則裡最傷的幾條「絕對不要」變成機制：`git push`、`docker compose down -v`
+互動時回 `ask`、無人值守時回 `deny`；無人值守時在預設分支上 `git commit` 回 `deny`。
+其餘不輸出任何東西，交回正常權限流程。
+
+- **逐段判斷子指令，不對整串 regex。** 指令先用 `; && || |` 切段，每段跳過環境變數
+  指派、`sudo`，再跳過 git 的全域選項（`-C <路徑>`、`-c <設定>`）找到子指令。
+  整串 regex 會把 `git commit -m "修正 push 通知"` 當成 push——無人值守時那就是
+  直接 deny 掉一顆正常的 commit。
+- 切段用 awk 不用 sed：BSD sed 不認取代字串裡的 `\n`。
+- 要攔新的指令時，照 `case "$prog"` 的結構加分支，並比照 `decide ask|deny`。
+- 攔不到 `bash -c "…"`、腳本檔裡的指令。這是安全網，不是沙箱，不要為了補這個
+  去解析 shell 語法。
+
+手動測試：
+
+```bash
+echo '{"tool_name":"Bash","tool_input":{"command":"git push"},"cwd":"/path/to/project"}' \
+  | bash hooks/guard.sh | jq .
+```
 
 ### hooks/verify-gate.sh —— Stop 守門員
 
@@ -123,6 +145,10 @@ README「它做五件事」那節與這段字串是同一份內容的兩個複�
   `${transcript_path%.jsonl}/subagents/agent-*.jsonl`，母檔裡只有一次 `Agent`
   呼叫。只掃母檔的話，實作一外包守門員就完全不作動——測試不跑、UI 不查，
   而且是**安靜放行**。多檔 grep 記得加 `-h`，否則 `file_path` 會被冠上檔名前綴。
+- **pytest 要自己找**：依序 `.venv/bin/pytest`、`venv/bin/pytest`（含 Windows 的
+  `Scripts/pytest.exe`）、`uv run pytest`（有 `uv.lock` 時）、PATH。以前只看 PATH，
+  而 pytest 通常只裝在 venv 裡——結果是測試整段沒跑卻放行。找不到 pytest 但有
+  `tests/` 或 `test_*.py` 時要 `block`，不能跳過。
 - 逃生門：`.claude/.no-verify` 或 `CLAUDE_SKIP_VERIFY=1`。
 
 ### hooks/archive-transcript.sh —— 兩個觸發點，不能只留一個
@@ -139,7 +165,7 @@ README「它做五件事」那節與這段字串是同一份內容的兩個複�
 要改觸發時機，`hooks.json`、這支腳本的 `mode` 分支、README 第 5 節、
 `docs/TROUBLESHOOTING.md` 四處要一起改。
 
-### fd 紀律（三個 hook 都一樣）
+### fd 紀律（四個 hook 都一樣）
 
 ```bash
 exec 3>&1 1>&2

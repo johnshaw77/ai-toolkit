@@ -145,3 +145,56 @@ rc=0
 
 **掃出一個真的問題並修掉**：這份 VERIFICATION.md 初稿寫了公司內部網址與一筆
 真實會議標題。公開 repo 不能有那些，已改寫成泛稱。
+
+---
+
+## 2026-09-28　unattended 0.24.0（守衛 hook、pytest 探測）
+
+環境：macOS 25.5.0、`/bin/bash` 3.2.57（macOS 內建版本，刻意用它測）、jq、uv。
+全部用手動餵 JSON 的方式跑 hook，**沒有**經過 `claude plugin update` 在真實 session 裡觸發。
+
+### guard.sh（21 個案例）
+
+互動模式（無 `.claude/UNATTENDED`）：
+
+```
+git push / git push -u origin feat/x / cd x && git -C . push --force
+FOO=1 git push / /usr/bin/git push                        → ask
+docker compose down -v / compose -f a.yml down --volumes
+docker-compose down -v                                    → ask
+git commit -m "修正 push 通知" / git log --grep push
+echo "git push" / docker compose down / up -d --build
+git commit（在 main）/ npm test                            → 不輸出
+```
+
+無人值守（有標記檔，git repo 在 `main`）：
+
+```
+git push                         → deny
+git add -A && git commit -m x    → deny（在 main）
+docker compose down -v           → deny
+git status                       → 不輸出
+切到 feat/x 後 git commit        → 不輸出
+```
+
+非 Bash 工具（`Edit`）→ 不輸出、exit 0。所有輸出都能被 `jq` 解析（stdout 只有一包 JSON）。
+
+### verify-gate.sh 的 pytest 探測
+
+用假 transcript（一筆 `Edit` 改 `pkg/core.py`），PATH 限縮成 `/usr/bin:/bin:/opt/homebrew/bin`
+（確保 PATH 上沒有 pytest）：
+
+| # | 情境 | 結果 |
+|---:|---|---|
+| 1 | 有 `tests/`、沒有任何 pytest | block：「有測試檔，但找不到可以執行的 pytest」 |
+| 2 | `.venv` 裡有 pytest、測試失敗 | block：「`.venv/bin/pytest` 沒有通過」 |
+| 3 | `.venv` 裡有 pytest、測試通過 | 放行 |
+| 4 | 有 `pyproject.toml`、沒有測試檔 | 放行（維持舊行為） |
+
+改 `.vue` 沒開瀏覽器 → block，訊息結尾有新增的「沒裝瀏覽器 MCP 時怎麼辦」段落。
+
+`bash -n` 四支 hook 語法通過、`hooks.json` 是合法 JSON。
+
+**沒驗到的**：`uv run pytest` 那條路徑（要連網裝依賴）、Windows、以及 `ask` 在
+`bypassPermissions` 模式下是否仍會跳出確認——要裝新版後在真實 session 裡試。
+

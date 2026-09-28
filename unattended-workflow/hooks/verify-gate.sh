@@ -157,9 +157,24 @@ while IFS= read -r root; do
     done
 
   elif [ -f "$root/pyproject.toml" ] || [ -f "$root/pytest.ini" ]; then
-    if command -v pytest >/dev/null; then
-      run_capped "$(step_cap)" "$tmp" sh -c "cd '$root' && pytest -q" \
-        || fail "$root" "pytest" "$tmp"
+    # pytest 通常裝在專案的 venv 裡，PATH 上找不到。以前只看 PATH，
+    # 找不到就整段跳過——測試根本沒跑卻放行，是最典型的安靜放行。
+    py_runner=""
+    for p in .venv/bin/pytest venv/bin/pytest .venv/Scripts/pytest.exe venv/Scripts/pytest.exe; do
+      [ -x "$root/$p" ] && { py_runner="$p"; break; }   # 相對路徑：下面會先 cd 進 $root
+    done
+    if [ -z "$py_runner" ] && [ -f "$root/uv.lock" ] && command -v uv >/dev/null; then
+      py_runner="uv run pytest"
+    fi
+    [ -z "$py_runner" ] && command -v pytest >/dev/null && py_runner="pytest"
+
+    if [ -n "$py_runner" ]; then
+      run_capped "$(step_cap)" "$tmp" sh -c "cd '$root' && $py_runner -q" \
+        || fail "$root" "$py_runner" "$tmp"
+    elif [ -d "$root/tests" ] || [ -n "$(find "$root" -maxdepth 3 -name 'test_*.py' -not -path '*/.*' -print -quit 2>/dev/null)" ]; then
+      rm -f "$tmp"
+      block "$root 有測試檔，但找不到可以執行的 pytest（找過 .venv、venv、\`uv run\`、PATH），所以測試**完全沒跑**。
+請先把 pytest 裝進這個專案的環境（例如 \`uv add --dev pytest\` 或 \`.venv/bin/pip install pytest\`），跑一次全綠再結束。"
     fi
 
   elif [ -f "$root/go.mod" ]; then
@@ -190,7 +205,12 @@ if [ "$ui_touched" = "1" ] && [ "$browser_used" = "0" ]; then
 4. 檢查 console：不可以有任何 error 或 warning
 5. 回報你實際操作了什麼、看到什麼
 
-只做 type-check 或「看起來應該沒問題」不算完成。"
+只做 type-check 或「看起來應該沒問題」不算完成。
+
+如果你的工具清單裡**根本沒有**任何 \`mcp__claude-in-chrome__\` 或 \`chrome-devtools\` 工具，
+代表這台電腦沒裝瀏覽器 MCP，不要硬撐也不要假裝驗過：直接告訴使用者
+「這次 UI 改動沒有經過瀏覽器驗證」，並提醒他安裝 Claude in Chrome 擴充功能
+（見 plugin README 的安裝步驟 1）。"
 fi
 
 if [ "$api_touched" = "1" ] && [ "$http_used" = "0" ]; then

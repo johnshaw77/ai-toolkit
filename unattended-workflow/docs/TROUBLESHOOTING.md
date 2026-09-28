@@ -181,6 +181,29 @@ rm .claude/UNATTENDED  # 或直接刪
 
 ---
 
+## 守衛擋了我的 push／commit
+
+`hooks/guard.sh` 是故意的：
+
+| 看到什麼 | 原因 | 怎麼辦 |
+|---|---|---|
+| 互動時 `git push` 跳出確認 | push 是對外動作 | 確定要推就按允許 |
+| 無人值守時 push 被拒 | 無人值守永遠不 push | 回來後自己 push |
+| 無人值守時 commit 被拒，訊息說在 `main` 上 | 無人值守只在分支上做 | `git checkout -b feat/<項目>` 再 commit |
+| `docker compose down -v` 跳確認或被拒 | 會刪 volume 裡的資料 | 只是重啟的話不要加 `-v` |
+
+無人值守時 commit 被拒但你明明不在 `main`：看 `git symbolic-ref --short HEAD`，
+還有 `origin/HEAD` 指向哪條（守衛把它也當成預設分支）。
+
+## 守門員說「找不到可以執行的 pytest」
+
+專案有 `tests/` 或 `test_*.py`，但 `.venv/bin/pytest`、`venv/bin/pytest`、
+`uv run pytest`（要有 `uv.lock`）、PATH 上的 `pytest` 都找不到。以前這種情況會
+**直接跳過測試並放行**，現在改成擋下。
+
+把 pytest 裝進專案環境就好：`uv add --dev pytest`，或 `.venv/bin/pip install pytest`。
+venv 放在其他名稱的目錄的話，改名成 `.venv`，或在 PATH 上放一個 pytest。
+
 ## Windows
 
 | 症狀 | 原因與處理 |
