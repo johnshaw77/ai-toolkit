@@ -149,6 +149,13 @@ echo '{"tool_name":"Bash","tool_input":{"command":"git push"},"cwd":"/path/to/pr
   `Scripts/pytest.exe`）、`uv run pytest`（有 `uv.lock` 時）、PATH。以前只看 PATH，
   而 pytest 通常只裝在 venv 裡——結果是測試整段沒跑卻放行。找不到 pytest 但有
   `tests/` 或 `test_*.py` 時要 `block`，不能跳過。
+- **測試只在無人值守跑**（`.claude/UNATTENDED` 存在）。互動模式把 `roots` 餵空給
+  測試迴圈，UI／API 檢查照舊。使用者實際的做法是嫌每回合重跑浪費而整個加
+  `.no-verify`，結果連 UI／API 檢查一起關掉——所以把貴的那段拿掉，便宜的留著。
+- **`already_ran`：agent 跑過就不重跑。** 從 transcript 建事件表（工具呼叫帶
+  `timestamp`、失敗的 `tool_result` 帶 `is_error: true`），判斷「最後一次改這個專案
+  之後，有沒有符合樣式、沒失敗的 Bash」。指令含 `|` 或 `;` 一律不算（exit code
+  被後面的指令蓋掉）。樣式經過 `awk -v`，**不要用反斜線**。
 - 逃生門：`.claude/.no-verify` 或 `CLAUDE_SKIP_VERIFY=1`。
 
 ### hooks/archive-transcript.sh —— 兩個觸發點，不能只留一個

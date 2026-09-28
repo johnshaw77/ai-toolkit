@@ -198,3 +198,32 @@ git status                       → 不輸出
 **沒驗到的**：`uv run pytest` 那條路徑（要連網裝依賴）、Windows、以及 `ask` 在
 `bypassPermissions` 模式下是否仍會跳出確認——要裝新版後在真實 session 裡試。
 
+---
+
+## 2026-09-28　unattended 0.24.0 實機補驗：守衛在 bypass 模式仍會跳確認
+
+裝上 0.24.0、重開 Claude Code（bypassPermissions 模式），在沒有 remote 的測試 repo
+叫 Claude 執行 `git push`：權限確認框出現，使用者選 No，工具呼叫被拒絕。
+上一條紀錄「沒驗到：`ask` 在 bypass 模式下是否仍會跳出確認」→ **會**。
+
+## 2026-09-28　unattended 0.25.0（互動模式不跑測試、agent 跑過就不重跑）
+
+環境：macOS、`bash` 3.2.57、jq、uv。用假 transcript（帶 `timestamp` 與 `tool_use_id`，
+格式照真實 transcript），專案的 `.venv` 裡裝了 pytest、測試**刻意會失敗**：
+
+| # | 情境 | 結果 |
+|---:|---|---|
+| 1 | 互動｜改 `.py` | 放行（不跑測試） |
+| 2 | 互動｜改 `.vue`、沒開瀏覽器 | 擋下（UI 檢查照舊） |
+| 3 | 無人值守｜agent 沒跑測試 | 擋下：`.venv/bin/pytest` 沒通過 |
+| 4 | 無人值守｜改檔後跑過 `pytest -q`、沒有 `is_error` | 放行（信任 agent 的結果） |
+| 5 | 無人值守｜跑過但是 `pytest -q 2>&1 \| tail -5` | 擋下（有 pipe 不算） |
+| 6 | 無人值守｜跑過但 `is_error: true` | 擋下 |
+| 7 | 無人值守｜pytest 在改檔**之前** | 擋下 |
+
+效能：在最大的一份真實 transcript（76.8 MB）上建事件表，解析出 789 個工具呼叫、
+25 個失敗結果，耗時 0.04 秒。
+
+**沒驗到的**：npm／go／cargo 的 `already_ran` 樣式（只驗了 pytest）；
+真實 session 裡的無人值守跑一輪。
+

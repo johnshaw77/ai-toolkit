@@ -2,8 +2,15 @@
 # Stop hook：完成度守門員。
 #
 # 只在「這場對話真的改過檔案」時作動，然後檢查兩件事：
-#   1. 被改到的每個子專案，測試與型別檢查都要過
-#   2. 改了 UI 就要開過瀏覽器；改了 API 就要真的打過 endpoint
+#   1. 被改到的每個子專案，測試與型別檢查都要過（**只在無人值守模式**）
+#   2. 改了 UI 就要開過瀏覽器；改了 API 就要真的打過 endpoint（兩種模式都查）
+#
+# 第 1 項在互動模式不跑：使用者在場，每個回合結束都等整套測試跑完太浪費，
+# 而且互動時常常是「先改一半、還不想測」。第 2 項只是掃 transcript，幾乎零成本，
+# 而且是測試抓不到的東西，所以一直保留。
+#
+# 無人值守時也不盲目重跑：agent 在最後一次改檔之後已經自己跑過測試、而且成功，
+# 就信任那次結果（見 already_ran）。
 #
 # 支援 monorepo：從改動的檔案往上找最近的專案根（package.json /
 # pyproject.toml / go.mod / Cargo.toml），只跑被影響到的那些。
@@ -101,6 +108,41 @@ roots=$(while IFS= read -r f; do
         done <<< "$edited_files" | sort -u)
 [ -n "$roots" ] || exit 0
 
+unattended=0
+[ -f .claude/UNATTENDED ] && unattended=1
+
+# ---------- agent 自己跑過的測試算不算數 ----------
+# 事件表：每個工具呼叫一行 U（時間、id、名稱、檔案、指令），每個失敗的結果一行 E（id）。
+# 失敗的 Bash 在 transcript 裡是 tool_result 的 is_error: true（內容是 "Exit code N"）。
+events=$(grep -h '"type":"tool_use"\|"is_error":true' "${tps[@]}" 2>/dev/null \
+  | jq -Rr 'fromjson? | .timestamp as $t | .message.content[]?
+      | if .type == "tool_use" then
+          ["U", $t, .id, .name, (.input.file_path // .input.notebook_path // ""), ((.input.command // "") | tostring)]
+        elif .type == "tool_result" and .is_error == true then ["E", .tool_use_id]
+        else empty end
+      | @tsv' 2>/dev/null)
+
+# already_ran <專案根> <ERE>：最後一次改這個專案的檔案之後，有沒有一個 Bash 指令
+# 符合 ERE、而且沒有失敗。
+# 指令裡有 | 或 ; 一律不算：`pytest | tail -20` 的 exit code 是 tail 的、
+# `pytest; echo done` 是 echo 的——測試失敗也會看起來成功，那又是一次安靜放行。
+# ERE 經過 awk -v 會吃掉反斜線，所以傳進來的樣式不要用 \。
+already_ran() {
+  awk -F'\t' -v root="$1/" -v re="$2" '
+    $1 == "E" { err[$2] = 1; next }
+    $1 == "U" { n++; t[n] = $2; id[n] = $3; nm[n] = $4; fp[n] = $5; cmd[n] = $6 }
+    END {
+      last = ""
+      for (i = 1; i <= n; i++)
+        if ((nm[i] == "Edit" || nm[i] == "Write" || nm[i] == "NotebookEdit") && index(fp[i], root) == 1 && t[i] > last)
+          last = t[i]
+      for (i = 1; i <= n; i++)
+        if (nm[i] == "Bash" && t[i] > last && cmd[i] ~ re && index(cmd[i], "|") == 0 && index(cmd[i], ";") == 0 && !(id[i] in err))
+          exit 0
+      exit 1
+    }' <<< "$events"
+}
+
 # ---------- 執行測試 ----------
 run_capped() {   # run_capped <秒> <輸出檔> <指令...>
   local secs=$1 out=$2; shift 2
@@ -138,6 +180,7 @@ $out"
 }
 
 skipped=""
+# 互動模式：roots 清單餵空的，整段不跑（見檔頭說明）
 while IFS= read -r root; do
   [ -n "$root" ] || continue
   if [ "$(budget_left)" -lt 15 ]; then
@@ -150,6 +193,11 @@ while IFS= read -r root; do
   if [ -f "$root/package.json" ]; then
     for s in test typecheck; do
       jq -e --arg s "$s" '.scripts[$s] // empty' "$root/package.json" >/dev/null 2>&1 || continue
+      if [ "$s" = "test" ]; then
+        already_ran "$root" '(npm|pnpm|yarn|bun)( run)? test|vitest|jest' && continue
+      else
+        already_ran "$root" 'typecheck|vue-tsc|tsc( |$)' && continue
+      fi
       # npm --prefix 會連 script 的 cwd 一起設成 $root，相對路徑的 fixture／config
       # 讀得到，不必再包一層 cd。
       run_capped "$(step_cap)" "$tmp" env CI=true npm --prefix "$root" run "$s" --silent \
@@ -168,7 +216,9 @@ while IFS= read -r root; do
     fi
     [ -z "$py_runner" ] && command -v pytest >/dev/null && py_runner="pytest"
 
-    if [ -n "$py_runner" ]; then
+    if already_ran "$root" 'pytest'; then
+      :
+    elif [ -n "$py_runner" ]; then
       run_capped "$(step_cap)" "$tmp" sh -c "cd '$root' && $py_runner -q" \
         || fail "$root" "$py_runner" "$tmp"
     elif [ -d "$root/tests" ] || [ -n "$(find "$root" -maxdepth 3 -name 'test_*.py' -not -path '*/.*' -print -quit 2>/dev/null)" ]; then
@@ -178,16 +228,18 @@ while IFS= read -r root; do
     fi
 
   elif [ -f "$root/go.mod" ]; then
+    already_ran "$root" 'go test' ||
     run_capped "$(step_cap)" "$tmp" sh -c "cd '$root' && go test ./..." \
       || fail "$root" "go test ./..." "$tmp"
 
   elif [ -f "$root/Cargo.toml" ]; then
+    already_ran "$root" 'cargo test' ||
     run_capped "$(step_cap)" "$tmp" sh -c "cd '$root' && cargo test" \
       || fail "$root" "cargo test" "$tmp"
   fi
 
   rm -f "$tmp"
-done <<< "$roots"
+done <<< "$([ "$unattended" = "1" ] && printf '%s\n' "$roots")"
 
 [ -n "$skipped" ] && block "守門員的時間預算（${BUDGET} 秒）用完了，下面這幾個專案的測試**完全沒跑到**：
 $skipped
