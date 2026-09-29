@@ -2,3 +2,5 @@
 node_modules/
 # kokoro 用的 Python venv：內部寫死絕對路徑，不能跨機器搬，要用再照 SKILL.md 重建
 .venv/
+# mlx-audio（本地 Qwen3-TTS / Breeze TTS server）用的 venv，跟 kokoro 的分開以免依賴衝突
+.venv-mlx/

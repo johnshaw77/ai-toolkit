@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -6,7 +7,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { silentWav } from './helpers/server.mjs';
 
-const TOOL = new URL('../tools/manifest-to-srt.mjs', import.meta.url).pathname;
+const TOOL = fileURLToPath(new URL('../tools/manifest-to-srt.mjs', import.meta.url));
 
 test('舊錄影補字幕：量 narration/step-N.wav 長度，從 tEndMs 往回推', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'screencast-srt-'));

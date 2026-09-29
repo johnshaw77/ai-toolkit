@@ -193,3 +193,137 @@ TTS 服務端換了模型但參數沒變時會拿到舊聲音——要重錄新�
 mousemove 全部漏接。現在監聽器一開始就掛在 window，只有「把 DOM 掛上去」這件事
 等 DOMContentLoaded。另把游標最後位置記在 sessionStorage，點連結換頁後游標
 留在原位，不會消失到下一次移動才出現。
+
+---
+
+## 2026-09-28　screencast：預設語音改成 edge（微軟曉臻）
+
+### 為什麼是 edge 首選、Breeze 次之、Qwen3 最後
+
+這是使用者聽過試聽檔後定的順序。理由：團隊不是每個人都有 Mac，而 edge 在 Windows
+也能用；曉臻是台灣腔，中英夾雜唸得自然；免費、免 key，一句 2–3 秒。Breeze-TTS-2
+也是台灣腔、而且完全本地，但只能在 Apple Silicon 上跑（mlx-audio），又慢（約 6 倍於
+即時）。Qwen3-TTS 快，但是大陸腔。kokoro 的中文使用者評為「一團亂」。
+
+**代價**：
+- 沒寫 `narration.engine` 的 scenario 從 kokoro 變成 edge。要沿用 kokoro 得明寫。
+- edge 要連網，講稿會送到微軟。
+- edge-tts 借用的是 Edge「大聲朗讀」的介面，不是微軟公開的 API，哪天可能壞掉或被擋。
+  壞了的退路是 Breeze（Mac）或 openai-compatible 接 GPU 機，所以這兩條路都留著、
+  也寫進 SKILL.md。
+
+### edge 用 Python 的 edge-tts CLI，不用 npm 套件
+
+npm 上有幾個 Edge TTS 的移植，但微軟改過好幾次驗證方式（Sec-MS-GEC token 等），
+Python 版 edge-tts 是跟得最快的。`uv tool install edge-tts` 在三個平台都是同一行，
+uv 自己處理 Python。
+
+**代價**：多一個非 npm 的依賴，每台機器要多跑一行安裝；呼叫是 execFileSync，
+每句多一點 process 啟動時間（實測一句 2–3 秒，可忽略）。
+
+### Breeze / Qwen3 不寫專用 engine，走 openai-compatible
+
+mlx-audio 本身就有 OpenAI 相容的 server，`extraBody` 能帶 `instruct`、`lang_code`，
+不需要新程式碼，只要文件寫清楚怎麼啟動與設定。venv 放在 `.venv-mlx`，跟 kokoro 的
+`.venv` 分開，避免 numpy 等依賴衝突。
+
+### 本地 TTS 的請求改用 node:http，逾時預設 10 分鐘
+
+試 Qwen3 1.7B 與 Breeze 時抓到：內建 fetch（undici）固定只等 5 分鐘回應標頭，
+mlx-audio 第一次收到請求才下載、載入幾 GB 的模型，超過 5 分鐘 client 就放棄，
+只丟一句 "fetch failed"——server 後來其實回了 200。改用 node:http，`timeoutMs`
+可調，逾時訊息直接講是模型還在載入。
+
+---
+
+## 2026-09-28　screencast：假游標預設放大 1.5 倍、可設定
+
+24px 的游標在 1080p 錄影裡太小（使用者提出）。加 `scenario.cursor`
+（`scale`／`size`／`rippleSize`／`rippleColor`），預設 `scale: 1.5`。
+
+順手修正定位：以前是 `translate(x-2, y-2)`，但箭頭尖端在 SVG 的 (4,2)，
+所以尖端其實偏右 2px；放大後誤差會跟著放大。改成依比例把**尖端**對準座標。
+
+**代價**：所有新錄的影片游標都變大，跟以前錄的放在一起看會不一致。
+要維持舊樣子設 `cursor: { scale: 1 }`。
+
+---
+
+## 2026-09-28　screencast：鏡頭推近／平移（zoom、pan）
+
+### 錄完後依 manifest 用 ffmpeg 做，不在錄影當下改頁面
+
+考慮過錄影時用 CSS transform 放大網頁（最清楚），但會干擾頁面排版、fixed 元素與
+點擊座標，容易把受測系統弄壞。改成錄影照舊，manifest 多記每步的元素外框與按下去
+的時間（`focus`、`actionMs`），錄完算鏡頭路徑、另外輸出 `demo-zoomed.mp4`。
+好處是調 zoom 不用重錄（`--zoom-only`）。也考慮過 HyperFrames，對大量操作教學太重。
+
+### 開關：預設關，`autoZoom` 全開，step 的 `zoom` 個別覆寫（使用者選的方案 3）
+
+### 有 zoom 就用 2 倍像素錄影，而且要加 `--force-device-scale-factor`
+
+實測 Playwright 的 recordVideo 會**忽略** `deviceScaleFactor`：畫面照 CSS px 大小錄，
+其餘填灰色；CDP `Page.startScreencast` 在 headless 下也只給 CSS px 大小（而且只有
+約 8 fps）。加上 Chrome 的 `--force-device-scale-factor=2` 才錄得到真的 2 倍細節
+（裁同一塊區域逐像素比對確認）。頁面看到的 innerWidth 不變，排版與座標不受影響。
+
+**代價**：1080p viewport 等於錄 4K，錄影時 CPU 吃重（實測 M4 Pro 一支 34 秒的影片
+整個流程 60 秒）；`demo.webm` 檔案變大。沒開 zoom 時維持 1 倍，不受影響。
+
+### 運鏡用 ffmpeg `perspective`，不用 `zoompan`／`crop`
+
+zoompan 與 crop 只能以整數像素移動，平移時畫面會一格一格地抖。perspective 用小數
+座標取樣（cubic），能做平滑的推移。
+
+運算式寫成「每段乘 0/1 開關再加總」的平的形式：一開始用巢狀 `if()`，測試抓到
+ffmpeg 運算式解析器有巢狀深度上限，150 個關鍵格就解析失敗。
+
+### 鏡頭規則
+
+- 鏡頭在點下去那一刻到位（轉場 700ms，smoothstep），跟游標一起動。
+- goto 拉回全畫面；wait／waitFor 維持鏡頭（送出後等結果，鏡頭停在那裡）。
+- 下一個焦點還在目前鏡頭中央 70% 內、倍率相同就不動，避免小幅晃動。
+- 元素放不進鏡頭 90% 就降低倍率，低於 1.15 倍就不推近。
+- 最後一步做完就拉回全畫面，用最後一步的結束時間，不用 totalMs（它包含錄完後的
+  截圖、關瀏覽器時間，實測比影片長，會讓拉遠落在影片結束之後）。
+
+### `final.png` 改成只截 viewport
+
+`fullPage: true` 會暫時撐大 viewport，這段被錄進影片結尾；2 倍像素錄影時是畫面縮到
+左上角、旁邊一片灰。改成只截目前畫面，也就是觀眾在影片最後看到的樣子。
+
+**代價**：長頁面的 final.png 不再是整頁。
+
+---
+
+## 2026-09-29　screencast：發佈給團隊（一半 Windows、一半 Mac）
+
+### 維持 git clone ＋ 連結，不做成 plugin
+
+做成 plugin 可以 `/plugin install`，但 screencast 需要 node_modules 與 Chromium；plugin
+每次更新都換一個快取路徑，這些得重裝，SKILL.md 裡寫死的 `~/.claude/skills/screencast/run.mjs`
+也要改。clone 下來再用連結接上最單純，更新就是 `git pull`。
+
+Windows 用 junction（`New-Item -ItemType Junction`）取代 `ln -s`：不需要系統管理員，
+也不用開開發人員模式。
+
+**代價**：安裝步驟比 `/plugin install` 多；Mac 與 Windows 要寫兩套。用 doctor 補。
+
+### 加 `npm run doctor`
+
+同事的環境各不相同，最常見的是漏裝一樣東西、錄到一半才失敗。doctor 檢查 Node、
+Chromium（用錄 zoom 的同一組參數開一次）、ffmpeg 與 libx264／libopus／aac 編碼器、
+perspective 濾鏡、edge-tts 實際連到微軟合成一次、skill 連結；缺什麼就印出那個平台的指令。
+預設會真的打一次 edge-tts，因為公司防火牆擋住是實際可能發生的事；`--offline` 可跳過。
+
+### Windows 路徑：`fileURLToPath`，引擎再補一層
+
+`new URL(..., import.meta.url).pathname` 在 Windows 上是 `/C:/...`，而範例 scenario 的
+outDir 就是這樣寫的——同事照範例複製就會失敗。範例、kokoro 的 venv 路徑、測試全改成
+`fileURLToPath`；引擎另外把 Windows 上 `/C:/` 開頭的 outDir 修正回來，讓以前照舊範例
+寫的 scenario 也能跑。
+
+### kokoro 在 Windows 上不支援
+
+它透過 `npx hyperframes tts` 呼叫；Node 在 Windows 上不開 shell 就不能執行 `npx.cmd`，
+開 shell 又要處理中文講稿的跳脫。kokoro 本來就排在最後、中文不建議用，直接標明不支援。

@@ -5,7 +5,8 @@
   "type": "module",
   "description": "跨專案共用：用 Playwright 操作網頁錄操作教學影片，動作是程式碼、重跑結果一致。",
   "scripts": {
-    "test": "node --test 'test/*.test.mjs'"
+    "test": "node --test 'test/*.test.mjs'",
+    "doctor": "node tools/doctor.mjs"
   },
   "dependencies": {
     "playwright": "^1.63.0"

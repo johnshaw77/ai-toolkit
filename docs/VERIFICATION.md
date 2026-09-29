@@ -269,3 +269,103 @@ git status                       → 不輸出
 
 **沒驗到的**：kokoro engine 與真正的 OpenAI API（沒有打真的 TTS）；
 真的內部系統（Vue、有登入）還沒錄過；Windows。
+
+## 2026-09-28　screencast：本地／免費中文 TTS 比較，edge 接進引擎
+
+環境：M4 Pro、48 GB、macOS 26.5.2；mlx-audio 0.5.6（mlx 0.32.2）、edge-tts（`uv tool install`）。
+
+**試聽比較**（同三句繁體講稿，透過 screencast 自己的 `synthesizeNarration` 合成）：
+
+| # | 設定 | 合成 | 音長 | RTF |
+|---:|---|---:|---:|---:|
+| 1 | kokoro `zf_xiaobei` | 15.0s | 22.7s | 0.66 |
+| 2 | Qwen3-TTS 0.6B 8bit `Vivian` | 9.4s | 22.6s | 0.41 |
+| 3 | Qwen3-TTS 1.7B bf16 `Vivian` | 25.0s | 20.2s | 1.23 |
+| 4 | Breeze-TTS-2 男聲（instruct） | 91.6s | 14.7s | 6.22 |
+
+使用者另外用一段中英夾雜的稿子聽了 edge 的曉臻／曉雨／雲哲（每句 2–3 秒）與
+Breeze 女聲（90 秒），選定順序 edge 曉臻 > Breeze > Qwen3。
+
+**抓到的 bug**：Qwen3 1.7B 與 Breeze 第一次合成都失敗、只回 "fetch failed"；
+mlx-audio 的 log 顯示 server 在 client 放棄之後回了 200。原因是 fetch 的 5 分鐘上限，
+改用 node:http 後重跑，兩者都成功。
+
+**自動測試**：`npm test` 56 個全過。新增 `edge.test.mjs` 9 個（用假的 edge-tts
+執行檔，不連網：預設 engine／音色、mp3 副檔名、speed→rate、開頭是「-」的講稿、
+快取、找不到執行檔、stderr 帶出、沒產出檔案）；`narration.test.mjs` 新增 3 個
+（慢回應在 timeoutMs 內成功、逾時訊息、timeoutMs 不影響快取 key）。
+
+**真實 edge-tts 端對端**：scenario 不寫 `narration.engine`，對本地 fixture 錄 5 步、
+5 句旁白：全部成功、39 秒；`narration/step-N.mp3`；`demo.mp4` 是 h264＋aac，
+`volumedetect` mean −20.9 dB（真的有聲音）；字幕第一張 `00:00:02,741`。
+同一支重跑：「其中 5 句來自快取」。輸出留在 `examples/out/edge-demo/`（不進版控）。
+
+**沒驗到的**：Windows 上的 `uv tool install edge-tts` 與整條流程（沒有 Windows 機器）；
+Qwen3-ASR 客觀轉寫比對（模型下載佔網路，中途停掉）。
+
+## 2026-09-28　screencast：游標大小可設定
+
+`npm test` 60 個全過。`cursor.test.mjs` 改成量**箭頭尖端的實際螢幕位置**
+（path 的 getBoundingClientRect），不再比對 transform 字串：預設 36px、
+`scale: 1`／`2.5`／`size: 50` 尖端都在滑鼠座標 ±1px 內；換頁後仍在原位；
+漣漪 `scale: 2` 時直徑 80px、圓心在點擊位置、顏色照設定。
+另加 e2e：`cursor.scale: 0` 在刪 outDir 前就報錯，上一支影片沒被刪。
+
+實際錄影：用真的 edge-tts 重錄 fixture 示範（5 句旁白全部來自快取），
+抽點擊「儲存」前後三格放大檢視：游標明顯比原本大，漣漪圓心落在箭頭尖端。
+
+## 2026-09-28　screencast：鏡頭推近／平移
+
+**可行性實測**（寫程式前）：
+
+| # | 方法 | 錄出來 | 結論 |
+|---:|---|---|---|
+| 1 | Playwright `deviceScaleFactor: 2` ＋ recordVideo 2 倍大小 | 1280×800 的畫面貼在 2560×1600 左上角，其餘灰色 | 不行 |
+| 2 | CDP `Page.startScreencast`（DSF 2、maxWidth 2560） | 1280×800，約 7.8 fps | 不行 |
+| 3 | `--force-device-scale-factor=2` ＋ DSF 2 ＋ recordVideo 2 倍 | 2560×1600，裁同一塊逐像素比對比 1 倍放大銳利 | 採用 |
+
+ffmpeg perspective 原型：2 秒 2560×1600 影片推近＋平移，0.7 秒渲染完，抽格位置正確。
+
+**自動測試**：`npm test` 80 個全過。
+
+- `camera.test.mjs`（14）：resolveZoom 組合、focusRect 置中／靠邊夾住／元素太大降倍率、
+  planCamera 各規則、擠在一起的 40 步關鍵格時間仍遞增且不出界；
+  **實際渲染**：四象限不同顏色的合成影片，推近左上象限時四個角都是紅、平移到右下時
+  四個角都是藍；150 個關鍵格的運算式能渲染（巢狀 if 版本在這裡失敗，改成加總形式後通過）。
+- `zoom.test.mjs`（6）：autoZoom 錄影是 2000×1400、demo.mp4／demo-zoomed.mp4 縮回
+  1000×700、h264＋aac、長度與帶旁白版相差 < 0.5 秒；manifest 有 focus／actionMs／zoom
+  與 camera；`--zoom-only` 不動 demo.webm、不打 TTS、倍率 3 生效；都不放大時移除運鏡版；
+  步驟數或 type 對不上拒絕；沒錄過／dry-run 輸出給明確錯誤；zoom < 1 開瀏覽器前報錯。
+
+**實際錄影**（1920×1080 viewport、autoZoom、真的 edge-tts 曉臻）：錄影 3840×2160、
+三支影片都是 843 格／33.7 秒，整個流程 60 秒。抽 6 格：全畫面 → 推近姓名欄（字清楚、
+漣漪在按下時出現）→ Email 輸入中 → 點儲存 → 「已儲存」訊息出現時鏡頭仍推近 → 結尾。
+
+**過程中抓到並修掉的**：
+- 結尾拉遠的關鍵格在 36.0 秒，但影片只有 33.7 秒（totalMs 含錄完後的處理時間）。
+  改用最後一步結束時間後，拉遠在 32.4 秒完成。
+- 影片結尾出現「畫面縮到左上角、旁邊一片灰」：是 fullPage 截圖撐大 viewport 被錄進去。
+  改截 viewport 後重錄，結尾 4 格都正常。
+- `--zoom-only` 在真實影片上重新輸出運鏡版 21 秒。
+
+**沒驗到的**：Windows 上的 `--force-device-scale-factor`；非常長的影片（10 分鐘以上）
+的渲染時間。
+
+## 2026-09-29　screencast：doctor 與跨平台
+
+`npm test` 81 個全過（新增 `normalizeOutDir`：Windows 上 `/C:/Users/me/out/demo` →
+`C:\Users\me\out\demo`，其他平台不動）。
+
+`npm run doctor`（這台 Mac）：9 項 ✓、1 項選用資訊，exit 0。
+
+模擬缺裝（PATH 只留 Node、HOME 指向空資料夾）：Chromium、ffmpeg、ffprobe、edge-tts、
+skill 連結 5 項 ✗，各自印出 brew／npx／uv／ln -s 的指令，並提示 uv 也沒裝；exit 1。
+
+模擬公司網路擋住微軟（假的 edge-tts 回 `Cannot connect to host speech.platform.bing.com:443`）：
+「edge-tts 合成失敗」並提示檢查防火牆與 `uv tool upgrade edge-tts`。
+
+公開 repo 檢查：要 commit 的 25 個檔案掃過 api key／secret／password／私鑰／email，
+只有已公開的 GitHub 帳號名稱。
+
+**沒驗到的**：Windows 實機（沒有 Windows 電腦）。Windows 的步驟與 doctor 的 Windows 提示
+是照文件寫的，要等同事實際裝一次、回報 `npm run doctor` 的輸出。

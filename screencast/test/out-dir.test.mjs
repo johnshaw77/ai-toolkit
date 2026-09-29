@@ -42,3 +42,11 @@ test('只有 .DS_Store 視為空資料夾', () => {
   prepareOutDir(dir);
   assert.deepEqual(fs.readdirSync(dir), ['.screencast-out']);
 });
+
+test('normalizeOutDir：Windows 上修掉 URL.pathname 多出來的開頭斜線，其他平台不動', async () => {
+  const { normalizeOutDir } = await import('../lib/record-engine.mjs');
+  assert.equal(normalizeOutDir('/C:/Users/me/out/demo', 'win32'), 'C:\\Users\\me\\out\\demo');
+  assert.equal(normalizeOutDir('D:\\work\\out', 'win32'), 'D:\\work\\out');
+  assert.equal(normalizeOutDir('/Users/me/out/demo', 'darwin'), '/Users/me/out/demo');
+  assert.equal(normalizeOutDir('/C:/x', 'darwin'), '/C:/x');
+});

@@ -1,8 +1,9 @@
+import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 
-const FIXTURES = new URL('../fixtures/', import.meta.url).pathname;
+const FIXTURES = fileURLToPath(new URL('../fixtures/', import.meta.url));
 
 /** 產生一段靜音 WAV（16kHz、mono、16-bit）。假 TTS 回的就是這個。 */
 export function silentWav(durationMs) {
@@ -35,7 +36,8 @@ export function fakeDurationMs(text) {
  * 起一個本地 server，同時扮演：
  *   - fixture 網站（test/fixtures/ 底下的靜態檔）
  *   - /poll：一直被輪詢的端點，讓頁面永遠不會 networkidle
- *   - /v1/audio/speech：OpenAI 相容的假 TTS。input 含 "[500]" 就回 500。
+ *   - /v1/audio/speech：OpenAI 相容的假 TTS。input 含 "[500]" 就回 500；
+ *     含 "[slow:N]" 就等 N 毫秒才回（模擬本地服務第一次載入模型）。
  */
 export async function startServer() {
   const ttsCalls = [];
@@ -53,8 +55,12 @@ export async function startServer() {
           res.end('model exploded');
           return;
         }
-        res.writeHead(200, { 'Content-Type': 'audio/wav' });
-        res.end(silentWav(fakeDurationMs(json.input)));
+        const slow = Number(json.input.match(/\[slow:(\d+)\]/)?.[1] ?? 0);
+        setTimeout(() => {
+          if (res.destroyed) return;
+          res.writeHead(200, { 'Content-Type': 'audio/wav' });
+          res.end(silentWav(fakeDurationMs(json.input)));
+        }, slow);
       });
       return;
     }

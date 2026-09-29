@@ -1,12 +1,20 @@
+import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import http from 'node:http';
+import https from 'node:https';
 import os from 'node:os';
 import path from 'node:path';
 
 // hyperframes tts 跑在獨立的 Python venv（kokoro-onnx 需要 3.9–3.12，
 // 跟系統預設 Python 版本可能對不上），裝在這個 skill 目錄下。
-const DEFAULT_PYTHON = new URL('../.venv/bin/python', import.meta.url).pathname;
+// Windows 的 venv 執行檔在 Scripts\python.exe。用 fileURLToPath 而不是 URL.pathname：
+// Windows 上 pathname 會是 /C:/... 這種多一個斜線的路徑。
+const DEFAULT_PYTHON = fileURLToPath(new URL(
+  process.platform === 'win32' ? '../.venv/Scripts/python.exe' : '../.venv/bin/python',
+  import.meta.url,
+));
 
 function parseJsonLine(raw) {
   // npx 第一次跑會混一些 npm warn 訊息進 stdout，JSON 通常是最後一行合法的那個。
@@ -49,6 +57,46 @@ export function ffprobeDurationMs(filePath) {
 const OPENAI_BASE_URL = 'https://api.openai.com/v1';
 
 /**
+ * POST 一個 JSON、把回應整包讀成 Buffer。
+ *
+ * 不用內建 fetch：它底下的 undici 固定只等 5 分鐘回應標頭，而本地 TTS 服務
+ * （mlx-audio、自架 GPU 機）第一次收到請求才去下載、載入模型，幾 GB 的模型
+ * 很容易超過 5 分鐘——server 最後其實回了 200，這邊卻早就放棄，只丟一句
+ * 看不出原因的 "fetch failed"。這裡的逾時是「整個請求沒有任何進展」的時間，
+ * 可以用 narration.timeoutMs 調整。
+ */
+function postForBuffer(url, headers, body, timeoutMs, base) {
+  const u = new URL(url);
+  const client = u.protocol === 'https:' ? https : http;
+  return new Promise((resolve, reject) => {
+    const req = client.request(u, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Length': Buffer.byteLength(body) },
+      timeout: timeoutMs,
+    }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks) }));
+      res.on('error', reject);
+    });
+    req.on('timeout', () => {
+      req.destroy(new Error(
+        `TTS 服務 ${base} 超過 ${Math.round(timeoutMs / 1000)} 秒沒有回應。` +
+        '本地服務第一次呼叫會先下載、載入模型，可能要好幾分鐘——' +
+        '可以先手動打一次讓它載入，或調大 narration.timeoutMs',
+      ));
+    });
+    req.on('error', (err) => {
+      if (err.message.startsWith('TTS 服務')) return reject(err);
+      // 本地服務最常見的死法：port 只綁 localhost，從別台機器連不到。
+      reject(new Error(`連不上 TTS 服務 ${base}: ${err.code ?? err.message}\n` +
+        '    本地服務請確認有綁 0.0.0.0（不是只綁 localhost）且防火牆有開'));
+    });
+    req.end(body);
+  });
+}
+
+/**
  * 打 OpenAI 的 /v1/audio/speech —— 或**任何講同一套協定的伺服器**。
  *
  * 網址不寫死的用意：本地跑的 TTS（4090 上的 openedai-speech、Fish Speech，
@@ -66,6 +114,7 @@ async function synthesizeOpenAI(text, outPath, {
   apiKeyEnv = 'OPENAI_API_KEY',
   format = 'wav',
   extraBody = {},
+  timeoutMs = 10 * 60 * 1000,
 } = {}) {
   const base = String(baseUrl).replace(/\/+$/, '');
   const isOfficial = base === OPENAI_BASE_URL;
@@ -81,28 +130,74 @@ async function synthesizeOpenAI(text, outPath, {
   const headers = { 'Content-Type': 'application/json' };
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 
-  let res;
-  try {
-    res = await fetch(`${base}/audio/speech`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ model, voice, input: text, response_format: format, speed, ...extraBody }),
-    });
-  } catch (err) {
-    // 本地服務最常見的死法：port 只綁 localhost，從別台機器連不到。
-    throw new Error(`連不上 TTS 服務 ${base}: ${err.message}\n` +
-      '    本地服務請確認有綁 0.0.0.0（不是只綁 localhost）且防火牆有開');
+  const body = JSON.stringify({ model, voice, input: text, response_format: format, speed, ...extraBody });
+  const res = await postForBuffer(`${base}/audio/speech`, headers, body, timeoutMs, base);
+  if (res.status < 200 || res.status >= 300) {
+    throw new Error(`TTS 失敗 (HTTP ${res.status} @ ${base}): ${res.body.toString('utf-8').slice(0, 300)}`);
   }
-  if (!res.ok) {
-    const errText = await res.text().catch(() => res.statusText);
-    throw new Error(`TTS 失敗 (HTTP ${res.status} @ ${base}): ${errText.slice(0, 300)}`);
-  }
-  const buf = Buffer.from(await res.arrayBuffer());
-  fs.writeFileSync(outPath, buf);
+  fs.writeFileSync(outPath, res.body);
   return { path: outPath, durationMs: ffprobeDurationMs(outPath) };
 }
 
+/**
+ * 把 speed 倍率換成 edge-tts 的 --rate：1 → '+0%'、1.2 → '+20%'、0.9 → '-10%'。
+ */
+export function edgeRate(speed = 1) {
+  const pct = Math.round((Number(speed) - 1) * 100);
+  return `${pct >= 0 ? '+' : ''}${pct}%`;
+}
+
+/**
+ * 微軟 Edge「大聲朗讀」用的線上語音（zh-TW-HsiaoChenNeural 曉臻等），透過
+ * Python 的 edge-tts CLI 呼叫。免費、不用 API key、幾秒一句，而且有台灣腔。
+ *
+ * 用 Python 版而不是 npm 上的移植：這不是微軟公開的 API，驗證方式改過好幾次，
+ * Python 版 edge-tts 是跟得最快的那一個。安裝一行搞定、各平台相同：
+ *   uv tool install edge-tts
+ *
+ * 執行檔：SCREENCAST_EDGE_TTS 環境變數 > opts.edgeTtsPath > PATH 上的 edge-tts。
+ * 輸出一律是 mp3（edge-tts 只吐 mp3），所以 .wav 路徑會換成 .mp3。
+ */
+function synthesizeEdge(text, outPath, {
+  voice = 'zh-TW-HsiaoChenNeural',
+  speed = 1,
+  pitch,
+  edgeTtsPath,
+  timeoutMs = 2 * 60 * 1000,
+} = {}) {
+  const bin = process.env.SCREENCAST_EDGE_TTS || edgeTtsPath || 'edge-tts';
+  outPath = outPath.replace(/\.[^./]+$/, '.mp3');
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  // 用 --text=... 而不是 --text ...：講稿開頭是「-」時才不會被當成參數
+  const args = [`--voice=${voice}`, `--rate=${edgeRate(speed)}`, `--text=${text}`, `--write-media=${outPath}`];
+  if (pitch) args.push(`--pitch=${pitch}`);
+  try {
+    execFileSync(bin, args, { stdio: ['ignore', 'ignore', 'pipe'], timeout: timeoutMs, encoding: 'utf-8' });
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      throw new Error(
+        `找不到 edge-tts（${bin}）。安裝：uv tool install edge-tts（Windows / macOS / Linux 同一行）\n` +
+        '    沒有 uv 的話：pip install edge-tts，或用 SCREENCAST_EDGE_TTS 指定執行檔路徑',
+      );
+    }
+    const detail = String(err.stderr || err.message).trim().split('\n').slice(-3).join(' | ');
+    throw new Error(
+      `edge-tts 合成失敗（"${text.slice(0, 20)}..."）: ${detail}\n` +
+      '    edge-tts 要連網；不是微軟官方 API，壞掉時先試 uv tool upgrade edge-tts',
+    );
+  }
+  if (!fs.existsSync(outPath) || fs.statSync(outPath).size === 0) {
+    throw new Error(`edge-tts 沒有產出音檔（"${text.slice(0, 20)}..."），可能是 voice 名稱不對：${voice}`);
+  }
+  return { path: outPath, durationMs: ffprobeDurationMs(outPath) };
+}
+
+// 沒寫 narration.engine 時用哪個。edge 是首選：團隊不是每個人都有 Mac，
+// edge 在 Windows 也能用、有台灣腔、免費。
+export const DEFAULT_ENGINE = 'edge';
+
 const ENGINES = {
+  edge: synthesizeEdge,
   kokoro: synthesizeKokoro,
   openai: synthesizeOpenAI,
   'openai-compatible': synthesizeOpenAI,
@@ -127,7 +222,7 @@ export function resolveCacheDir(opts = {}) {
  * 就不能拿舊檔。apiKeyEnv 不影響聲音，不算。
  */
 export function narrationCacheKey(text, opts = {}) {
-  const engine = opts.engine ?? 'kokoro';
+  const engine = opts.engine ?? DEFAULT_ENGINE;
   const material = JSON.stringify({
     engine: engine === 'openai-compatible' ? 'openai' : engine,
     text,
@@ -146,6 +241,7 @@ export function narrationCacheKey(text, opts = {}) {
  * 對應的操作步驟該停留多久，讓畫面跟旁白自然對齊。
  *
  * engine：
+ *   'edge'（預設）       微軟線上語音，台灣腔、免費、免 key、要連網，見 synthesizeEdge
  *   'kokoro'            本地、免費、免 API key，但中文音質普通，機械感重
  *   'openai'            OpenAI 的 /v1/audio/speech，中文自然很多，費用可忽略
  *   'openai-compatible' 同一段程式，只是語意上標明「這不是 OpenAI 本尊」，
@@ -155,11 +251,11 @@ export function narrationCacheKey(text, opts = {}) {
  * 每次都重新打 TTS 又慢又花錢。回傳值的 cached 標示這句是不是從快取來的。
  */
 export async function synthesizeNarration(text, outPath, opts = {}) {
-  const engine = opts.engine ?? 'kokoro';
+  const engine = opts.engine ?? DEFAULT_ENGINE;
   const synth = ENGINES[engine];
   if (!synth) {
     throw new Error(
-      `未知的 narration.engine: "${engine}"（支援 'kokoro' / 'openai' / 'openai-compatible'）`,
+      `未知的 narration.engine: "${engine}"（支援 'edge' / 'kokoro' / 'openai' / 'openai-compatible'）`,
     );
   }
 

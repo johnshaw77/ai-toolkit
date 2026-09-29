@@ -71,6 +71,23 @@ test('連不上：提示檢查 0.0.0.0 綁定', async () => {
   );
 });
 
+test('服務回應慢（第一次載入模型）：在 timeoutMs 內就等下去', async () => {
+  const r = await synthesizeNarration('[slow:1200] 慢慢來。', path.join(tmp, 'a.wav'), opts({ timeoutMs: 5000 }));
+  assert.ok(fs.existsSync(r.path));
+});
+
+test('超過 timeoutMs 沒回應：錯誤訊息講清楚原因與調整方式', async () => {
+  await assert.rejects(
+    synthesizeNarration('[slow:1500] 太慢了。', path.join(tmp, 'a.wav'), opts({ timeoutMs: 300 })),
+    /超過 0 秒沒有回應[\s\S]*narration\.timeoutMs/,
+  );
+});
+
+test('timeoutMs 不影響快取 key', () => {
+  const o = { engine: 'openai', voice: 'nova' };
+  assert.equal(narrationCacheKey('一', o), narrationCacheKey('一', { ...o, timeoutMs: 1 }));
+});
+
 test('response_format 換成 mp3：輸出檔名跟著換副檔名', async () => {
   const r = await synthesizeNarration('一。', path.join(tmp, 'step-1.wav'), opts({ format: 'mp3' }));
   assert.equal(path.extname(r.path), '.mp3');

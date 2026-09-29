@@ -1,5 +1,6 @@
 // 端對端：對本地 fixture 網站跑一支完整的 scenario（接假 TTS），
 // 檢查影片、音軌、mp4、字幕、manifest 是否彼此對得上。
+import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -175,7 +176,7 @@ test('outDir 指到不相干的資料夾：開瀏覽器前就拒絕', async () =
 
 test('CLI：--dry-run 通過 exit 0，有步驟失敗 exit 1', async () => {
   const { execFile } = await import('node:child_process');
-  const RUN = new URL('../run.mjs', import.meta.url).pathname;
+  const RUN = fileURLToPath(new URL('../run.mjs', import.meta.url));
   // server 跟測試在同一個 process，要用非同步子程序，不然 event loop 被卡住、server 回不了
   const runCli = (args) => new Promise((resolve) => {
     execFile('node', [RUN, ...args], (err, stdout) => resolve({ code: err ? err.code : 0, stdout }));
@@ -199,4 +200,13 @@ test('CLI：--dry-run 通過 exit 0，有步驟失敗 exit 1', async () => {
 
   const usage = await runCli([]);
   assert.equal(usage.code, 1);
+});
+
+test('cursor 設定寫錯：開瀏覽器、刪 outDir 之前就報錯', async () => {
+  const dir = path.join(tmp, 'bad-cursor');
+  fs.mkdirSync(dir);
+  fs.writeFileSync(path.join(dir, '.screencast-out'), '');
+  fs.writeFileSync(path.join(dir, 'demo.mp4'), '上一支影片');
+  await assert.rejects(runScenario({ outDir: dir, cursor: { scale: 0 }, steps: [] }), /cursor.scale 要是正數/);
+  assert.equal(fs.readFileSync(path.join(dir, 'demo.mp4'), 'utf-8'), '上一支影片');
 });

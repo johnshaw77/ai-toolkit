@@ -32,15 +32,48 @@
 
 ### 2. screencast（skill）
 
+Mac 與 Windows 都能用。先裝好 [Node.js](https://nodejs.org)（18 以上）與 git。
+
+**Mac**
+
 ```bash
-git clone https://github.com/johnshaw77/ai-toolkit.git
-cd ai-toolkit
-ln -s "$PWD/screencast" ~/.claude/skills/screencast
-cd ~/.claude/skills/screencast && npm install && npx playwright install chromium
-brew install ffmpeg          # 旁白配音要用
+brew install ffmpeg uv
+uv tool install edge-tts                       # 預設語音（微軟曉臻）
+
+git clone https://github.com/johnshaw77/ai-toolkit.git ~/ai-toolkit
+mkdir -p ~/.claude/skills
+ln -s ~/ai-toolkit/screencast ~/.claude/skills/screencast
+cd ~/ai-toolkit/screencast
+npm install
+npx playwright install chromium
+npm run doctor                                 # 全部 ✓ 就能用了
 ```
 
-[`screencast/README.md`](screencast/README.md) 有怎麼寫 scenario、怎麼換語音引擎。
+**Windows**（PowerShell，不需要系統管理員）
+
+```powershell
+winget install Gyan.FFmpeg
+winget install astral-sh.uv
+# ↑ 裝完關掉 PowerShell 重開，ffmpeg、uv 才找得到
+uv tool install edge-tts
+uv tool update-shell                           # 讓 edge-tts 進 PATH，之後再重開一次 PowerShell
+
+git clone https://github.com/johnshaw77/ai-toolkit.git $HOME\ai-toolkit
+New-Item -ItemType Directory -Force $HOME\.claude\skills
+New-Item -ItemType Junction -Path $HOME\.claude\skills\screencast -Target $HOME\ai-toolkit\screencast
+cd $HOME\ai-toolkit\screencast
+npm install
+npx playwright install chromium
+npm run doctor
+```
+
+`npm run doctor` 會檢查 Node、Chromium、ffmpeg（含需要的編碼器）、edge-tts 能不能連到
+微軟、skill 有沒有接到 Claude Code；缺什麼就印出要跑的那一行。
+
+**更新**：`cd ~/ai-toolkit && git pull`，再到 `screencast/` 跑一次 `npm install`。
+skill 是用連結接上的，更新完開新的 Claude Code 對話就會生效。
+
+怎麼寫 scenario、換語音、開鏡頭推近，見 [`screencast/README.md`](screencast/README.md)。
 
 ### 3. smart-scaffold（CLI）
 

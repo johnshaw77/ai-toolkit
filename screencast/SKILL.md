@@ -22,32 +22,15 @@ description: "Record an operational walkthrough / how-to video of a web app by d
 
 ## 一次性設置（每台機器只需要做一次）
 
-```bash
-cd ~/.claude/skills/screencast    # symlink，實體在 @Projects/ai-toolkit/screencast
-npm install                       # node_modules 不進版控，新機器一定要跑
-npx playwright install chromium   # 沒裝過 Chromium 才需要
-```
-
-**要配旁白的話**，不管用哪個 TTS engine，疊音軌那步都要系統裝一份完整版 ffmpeg
-（`brew install ffmpeg`）——Playwright 內附的 ffmpeg 是精簡版，沒有 libopus 編碼器。
-
-用 `narration.engine: 'kokoro'`（本地、免費，中文音質普通）額外需要一個 Python venv。
-**這個 venv 預設不存在**（不進版控——裡面寫死絕對路徑，跨機器搬會壞），要用 kokoro
-才建。kokoro-onnx 吃 3.9–3.12，跟系統預設 Python 版本容易對不上，所以獨立裝一份，
-不動系統環境：
+團隊一半 Mac、一半 Windows，兩邊的完整安裝步驟在 ai-toolkit 根目錄的 README。
+**不確定環境裝好沒有，先跑 doctor**——它會檢查 Node、Chromium、ffmpeg 編碼器、
+edge-tts 連線、skill 連結，缺什麼就印出那個平台要跑的指令：
 
 ```bash
-cd ~/.claude/skills/screencast
-uv venv .venv --python 3.12
-uv pip install --python .venv/bin/python kokoro-onnx soundfile
+cd ~/.claude/skills/screencast && npm run doctor
 ```
 
-裝好之後 `lib/narration.mjs` 會自動透過 `HYPERFRAMES_PYTHON=.venv/bin/python` 呼叫
-`npx hyperframes tts`，不用每次手動指定。
-
-用 `narration.engine: 'openai'`（中文自然很多，推薦）不需要裝這個 venv，只要跑的時候
-帶 `OPENAI_API_KEY` 環境變數就好。接自架的 TTS 用 `'openai-compatible'` + `baseUrl`，
-一樣不用裝東西——詳見下方 narration 那節。
+使用者回報錄影失敗、找不到指令、沒有聲音時，也先請他跑這個。
 
 ## 使用流程
 
@@ -83,21 +66,109 @@ uv pip install --python .venv/bin/python kokoro-onnx soundfile
    WebSocket 的系統會卡到逾時。真的需要可以設 `scenario.waitUntil` 或 step 的 `waitUntil`
    （`'load'`／`'domcontentloaded'`／`'networkidle'`／`'commit'`）。
 
+   **鏡頭推近／平移（zoom、pan）**：點擊、輸入時鏡頭自動推近到那個元素，連續幾步在附近就
+   平移過去，做完拉回全畫面。預設關閉，開了會**另外**輸出 `demo-zoomed.mp4`，原本的
+   `demo.mp4` 照樣保留：
+
+   ```js
+   autoZoom: true,                 // 所有 click / fill 都推近（預設 2 倍）
+   autoZoom: { zoom: 1.6 },        // 換預設倍率
+   steps: [
+     { type: 'click', text: '送出', zoom: 2.5 },   // 這步用 2.5 倍（沒開 autoZoom 也會推近）
+     { type: 'fill', placeholder: '備註', value: '…', zoom: false },  // 這步不推近
+   ]
+   ```
+
+   - 只有 `click`／`fill` 會推近；`goto` 拉回全畫面；`wait`／`waitFor` 維持目前鏡頭
+     （點送出後等結果出現，鏡頭會停在那裡讓人看清楚）。
+   - 鏡頭在「按下去那一刻」剛好到位，跟游標一起移動。元素太大（整張表格）會自動降低倍率。
+   - 有任何一步要推近，就**自動用 2 倍像素錄影**（`demo.webm` 會是 viewport 的兩倍大），
+     推近後字才不會糊；`demo.mp4`／`demo-zoomed.mp4` 都縮回 viewport 大小輸出。
+     1080p 的 viewport 等於錄 4K，錄影時 CPU 會比較吃重。
+   - **調 zoom 不用重錄**：改完 scenario 的 `zoom`／`autoZoom`，跑
+     `node ~/.claude/skills/screencast/run.mjs --zoom-only <scenario>`，幾十秒重新輸出
+     運鏡版。前提是步驟沒改（數量與 type 要跟錄的時候一樣）；原本沒開 zoom 錄的
+     （1 倍像素）也能補，但放大後會糊，會提示你重錄。
+
+   **假游標的大小**用 `scenario.cursor` 調，預設是原圖（24px）放大 1.5 倍＝36px，
+   1080p 錄影或要投影到大螢幕時看得清楚。改了要重錄才生效——游標是錄影當下畫在
+   頁面上的，不是後製疊上去的：
+
+   ```js
+   cursor: { scale: 2 },                                  // 游標與漣漪一起放大
+   cursor: { size: 40, rippleSize: 70, rippleColor: 'rgba(0,120,255,0.5)' },  // 分開指定
+   ```
+
+   縮放時箭頭**尖端**會對準點擊座標（不是圖片左上角），放多大都點得準。
+
    **任何一種 type 都可以再加一個 `narration: '一句口白'`。** 有 narration 的步驟會：
    合成語音 → 量出實際秒數 → 動作做完後用這個秒數當停留時間（`wait` 型步驟則完全用這個
    秒數取代 `ms`）。步調自然跟著講稿走，不用自己猜要 `wait` 幾毫秒，也不會有畫面跟聲音
    對不齊的問題。錄完會多一支疊好音軌的 `demo-narrated.webm`。
 
-   `scenario.narration = { engine, voice, speed }` 設整支影片共用的語音引擎/音色：
+   `scenario.narration = { engine, voice, speed }` 設整支影片共用的語音引擎/音色。
 
-   | engine | 品質 | 費用 | 需要 |
-   |---|---|---|---|
-   | `'kokoro'`（預設） | 中文機械感重，能聽但不自然 | 免費、本地 | 上面那個 `.venv` |
-   | `'openai'`（推薦中文內容用這個） | 自然很多 | 便宜（`gpt-4o-mini-tts`，一支教學影片幾分錢等級） | 環境變數 `OPENAI_API_KEY` |
-   | `'openai-compatible'` | 看你接什麼 | 本地跑就免費 | 一個講 OpenAI TTS 協定的端點 |
+   #### 選語音引擎（依這個順序挑）
+
+   **團隊不是每個人都有 Mac。** 沒有特別理由就用第一個，其他幾個是給有 Mac、
+   或不能把講稿送出公司的情況。
+
+   | # | engine | 聲音 | 平台 | 需要 | 備註 |
+   |---:|---|---|---|---|---|
+   | 1 | `'edge'`（**預設、首選**） | 微軟曉臻，**台灣腔**，中英夾雜自然 | 任何平台 | `uv tool install edge-tts`、要連網 | 免費、免 key、一句 2–3 秒 |
+   | 2 | `'openai-compatible'` ＋ Breeze-TTS-2 | 台灣華語開源模型，用一句話描述音色 | **只有 Apple Silicon Mac** | mlx-audio server（見下） | 本地、講稿不出機器；很慢（約 6 倍於即時） |
+   | 3 | `'openai-compatible'` ＋ Qwen3-TTS | 中文自然，但是**大陸腔** | **只有 Apple Silicon Mac**（或 GPU 機） | mlx-audio server（見下） | 本地；0.6B 比即時快 2 倍 |
+   | 4 | `'openai'` | 自然，大陸腔偏多 | 任何平台 | `OPENAI_API_KEY` | 付費（很便宜） |
+   | 5 | `'kokoro'` | 機械感重，**中文常唸得亂七八糟** | 任何平台 | 另建 `.venv`（見下） | 不建議用在中文 |
+
+   ⚠️ **`edge` 的限制，要讓使用者知道**：講稿會送到微軟伺服器（內部系統的機密字眼要先想
+   一下）；它借用的是 Edge 瀏覽器「大聲朗讀」的介面，**不是微軟公開的 API**，哪天可能
+   壞掉——壞了先 `uv tool upgrade edge-tts`，還不行就改用 2 或 3。
+
+   **edge**：預設音色 `zh-TW-HsiaoChenNeural`（曉臻）。其他台灣音色：`zh-TW-HsiaoYuNeural`
+   （曉雨，女）、`zh-TW-YunJheNeural`（雲哲，男）；完整清單 `edge-tts --list-voices`。
+   `speed` 會換成 edge 的 `--rate`（1.1 → `+10%`），另可給 `pitch: '-5Hz'`。
+   找不到執行檔時可以用 `SCREENCAST_EDGE_TTS` 環境變數指定路徑。
+
+   ```js
+   narration: { voice: 'zh-TW-HsiaoChenNeural' },   // engine 不寫就是 edge
+   ```
+
+   **Breeze / Qwen3（Mac 本地）**：兩個都透過 [mlx-audio](https://github.com/Blaizzy/mlx-audio)
+   跑一個 OpenAI 相容的 server。venv 跟 kokoro 的分開（依賴會衝突），第一次呼叫會下載
+   幾 GB 的模型，可能要好幾分鐘：
+
+   ```bash
+   cd ~/.claude/skills/screencast
+   uv venv .venv-mlx --python 3.12
+   uv pip install --python .venv-mlx/bin/python "mlx-audio[server]"
+   .venv-mlx/bin/mlx_audio.server --host 127.0.0.1 --port 8765   # 錄影期間保持開著
+   ```
+
+   ```js
+   // Breeze-TTS-2：沒有固定音色，用 instruct 一句話描述要什麼聲音
+   narration: {
+     engine: 'openai-compatible',
+     baseUrl: 'http://127.0.0.1:8765/v1',
+     model: 'mlx-community/Breeze-TTS-2-mlx',
+     extraBody: { instruct: '一位語氣溫和、咬字清楚的台灣年輕女性，用平穩的速度說明操作步驟。' },
+   },
+   // Qwen3-TTS：中文音色 Vivian / Serena / Uncle_Fu；0.6B 夠用又快，1.7B 較穩但慢
+   narration: {
+     engine: 'openai-compatible',
+     baseUrl: 'http://127.0.0.1:8765/v1',
+     model: 'mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit',
+     voice: 'Vivian',
+     extraBody: { lang_code: 'chinese' },
+   },
+   ```
+
+   Breeze 的音色是每次依 `instruct` 生成的，**不同句子之間音色可能有些微差異**；快取讓
+   同一句重錄時聲音不變。
 
    **`'openai-compatible'` 跟 `'openai'` 是同一段程式**，差別只在語意上標明「這不是
-   OpenAI 本尊」。網址靠 `baseUrl` 指定，所以任何提供 `/v1/audio/speech` 的服務都能直接接上：
+   OpenAI 本尊」。任何提供 `/v1/audio/speech` 的服務都能接（4090 之類的 GPU 機上跑
+   IndexTTS / CosyVoice，包一層三十行的 FastAPI 就好）：
 
    ```js
    narration: {
@@ -106,34 +177,29 @@ uv pip install --python .venv/bin/python kokoro-onnx soundfile
      apiKeyEnv: 'LOCAL_TTS_KEY',               // 預設 OPENAI_API_KEY；本地服務通常不用驗
      voice: 'my-cloned-voice',
      model: 'whatever-the-server-calls-it',
+     extraBody: { /* 服務自己的額外參數 */ },
+     timeoutMs: 600000,                        // 預設 10 分鐘，第一次載入大模型可能要調大
    },
    ```
 
-   本地跑的中文 TTS（openedai-speech、Fish Speech，或自己包一層 FastAPI 的 IndexTTS /
-   CosyVoice）大多有這個相容端點；沒有的話，包一層三十行的 HTTP wrapper 就好——
-   這邊對 TTS 的要求只有「文字進、音檔出」，長度是收到檔案後自己 ffprobe 量的。
-
-   **旁白有快取**：同一句話、同樣參數（engine、voice、model、speed、baseUrl…）合成過就直接用，
-   放在 `~/.cache/screencast/tts`（`SCREENCAST_CACHE_DIR` 可改）。調 selector 重錄不會重複
-   付費或等待。`narration.cache: false` 關掉；TTS 服務端換了模型但參數沒變時要記得關掉或
-   刪快取，不然會拿到舊聲音。
-
    API key 的規則：**官方網址一定要有**（沒有直接報錯，不會送出去才發現）；
-   自訂 `baseUrl` 則是有就帶 `Authorization`、沒有就不帶。
+   自訂 `baseUrl` 則是有就帶 `Authorization`、沒有就不帶。用 `'openai'` 時跑的時候帶
+   `OPENAI_API_KEY`（不要寫死在 scenario 檔裡），中文試過 `voice: 'nova'` 效果不錯。
 
-   `voice` 依 engine 而不同：`kokoro` 用 `npx hyperframes tts --list` 列出的 ID（預設
-   `zf_xiaobei`，中文女聲）；`openai` 用官方語音 ID（`alloy`/`echo`/`fable`/`nova`/
-   `onyx`/`shimmer`……），中文內容目前試過 `nova` 效果不錯。範例：
-
-   ```js
-   narration: { engine: 'openai', voice: 'nova' },
-   ```
-
-   跑的時候記得帶 `OPENAI_API_KEY`（不要寫死在 scenario 檔裡）：
+   **kokoro**（只在 macOS／Linux 驗證過；Windows 上它透過 `npx` 呼叫，不支援）：要另建 venv（不進版控——裡面寫死絕對路徑），kokoro-onnx 吃 Python 3.9–3.12：
 
    ```bash
-   OPENAI_API_KEY=sk-... node ~/.claude/skills/screencast/run.mjs scenarios/xxx.mjs
+   cd ~/.claude/skills/screencast
+   uv venv .venv --python 3.12
+   uv pip install --python .venv/bin/python kokoro-onnx soundfile
    ```
+
+   `voice` 用 `npx hyperframes tts --list` 列出的 ID（中文女聲 `zf_xiaobei`）。
+
+   **旁白有快取**：同一句話、同樣參數（engine、voice、model、speed、baseUrl、extraBody…）
+   合成過就直接用，放在 `~/.cache/screencast/tts`（`SCREENCAST_CACHE_DIR` 可改）。調 selector
+   重錄不會重複付費或等待。`narration.cache: false` 關掉；TTS 服務端換了模型但參數沒變時
+   要記得關掉或刪快取，不然會拿到舊聲音。
 
 3. **先 dry-run，再正式跑**：
 
@@ -145,14 +211,18 @@ uv pip install --python .venv/bin/python kokoro-onnx soundfile
    dry-run 不錄影、不合成語音、游標不做動畫，也**不動 outDir**（輸出放在系統暫存資料夾，
    路徑會印出來），有失敗一樣會存 `error-step-N.png`。有步驟失敗時兩者的 exit code 都是 1。
 
-   輸出固定在 scenario 檔旁邊的 `out/<資料夾名>/`（由 scenario 的 `outDir` 決定）：
+   輸出固定在 scenario 檔旁邊的 `out/<資料夾名>/`（由 scenario 的 `outDir` 決定）。
+   **寫 scenario 時 outDir 一律用 `fileURLToPath(new URL('./out/<名稱>', import.meta.url))`**
+   （`import { fileURLToPath } from 'node:url'`），不要用 `new URL(...).pathname`——
+   Windows 上會得到 `/C:/...` 這種壞掉的路徑（引擎有補救，但別依賴它）：
    - `demo.webm` — 錄影（無聲）
    - `demo-narrated.webm` — 疊了旁白音軌的版本（有 `narration` 才會產生）
+   - `demo-zoomed.mp4` — 推近／平移的運鏡版（有 zoom 才會產生）
    - `demo.mp4` — H.264＋AAC，有旁白就帶聲音。**要交給別人看就給這個**，`.webm` 在
      PowerPoint、LINE、Teams、Windows 常常播不了。`output: { mp4: false }` 關掉
    - `narration/step-N.wav` — 每句旁白的原始音檔
    - `demo.srt` / `demo.vtt` — 字幕（有 `narration` 才會產生）
-   - `final.png` — 最後一步的截圖
+   - `final.png` — 最後一步的畫面截圖（viewport 範圍，不是整頁）
    - `manifest.json` — 每一步相對影片開頭的起訖毫秒數，外加旁白自己的
      `narrationStartMs` / `narrationDurationMs`
    - 若某步失敗：`error-step-N.png`
@@ -230,5 +300,7 @@ ffmpeg -i demo-narrated.webm -i demo.vtt -map 0 -map 1 -c copy -c:s webvtt \
 - 旁白目前只支援「照順序、不重疊」——一句唸完才進下一步，不支援兩句同時疊音或
   跨步驟接話。夠用於一般操作教學，不夠用於需要精準卡點的旁白（例如唸到一半要剛好
   點下按鈕）這種情況要自己微調 `narration` 文字長度去湊時間。
+- `narration` 寫純文字，不要放 Markdown（`**粗體**`、反引號）——TTS 會把符號唸出來
+  或唸得很怪。從文件複製講稿時先清掉。
 - kokoro-onnx 對繁體中文是用注音/拼音 phonemizer 處理，罕見字或英文夾雜中文的句子
   發音可能不準——錄完務必聽一次，不要無檢查就發布。

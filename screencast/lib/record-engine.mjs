@@ -2,7 +2,8 @@ import { chromium } from 'playwright';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { CURSOR_INIT_SCRIPT } from './cursor-overlay.mjs';
+import { planCamera, renderCamera, resolveZoom, scenarioUsesZoom } from './camera.mjs';
+import { cursorInitScript } from './cursor-overlay.mjs';
 import { encodeMp4 } from './encode.mjs';
 import { fillValue, locate } from './locate.mjs';
 import { synthesizeNarration, muxNarration } from './narration.mjs';
@@ -53,23 +54,51 @@ async function moveToLocator(page, locator, pace) {
   const x = box.x + box.width / 2;
   const y = box.y + box.height / 2;
   await moveTo(page, { x, y }, pace);
-  return { x, y };
+  return { x, y, box };
 }
 
+// 回傳點擊的元素外框（CSS px）與按下去的時間點——鏡頭運動要知道
+// 「什麼時候、往哪裡」推近。
 async function clickWithCursor(page, locator, pace) {
-  const { x, y } = await moveToLocator(page, locator, pace);
+  const { x, y, box } = await moveToLocator(page, locator, pace);
   await page.evaluate(([x, y]) => window.__pwClickRipple?.(x, y), [x, y]);
+  const at = Date.now();
   await page.mouse.down();
   if (pace.clickHold) await page.waitForTimeout(pace.clickHold);
   await page.mouse.up();
   if (pace.afterClick) await page.waitForTimeout(pace.afterClick);
+  return { box, at };
 }
 
 async function typeWithCursor(page, locator, text, pace) {
-  await clickWithCursor(page, locator, pace);
+  const action = await clickWithCursor(page, locator, pace);
   await locator.fill('');
   await page.keyboard.type(text, { delay: pace.typeDelay });
   if (pace.afterType) await page.waitForTimeout(pace.afterType);
+  return action;
+}
+
+/**
+ * Windows 上 `new URL(..., import.meta.url).pathname` 會得到 /C:/Users/... ，
+ * 以前的範例就是這樣寫 outDir 的。這裡把開頭多的斜線拿掉，舊 scenario 照樣能跑。
+ */
+export function normalizeOutDir(outDir, platform = process.platform) {
+  const s = String(outDir);
+  if (platform === 'win32' && /^\/[A-Za-z]:[\/\\]/.test(s)) return path.win32.normalize(s.slice(1));
+  return s;
+}
+
+const evenSize = (vp) => ({ width: vp.width - (vp.width % 2), height: vp.height - (vp.height % 2) });
+
+/**
+ * 依 manifest 算鏡頭路徑、輸出 demo-zoomed.mp4。正式錄影與 --zoom-only 共用。
+ */
+function renderZoomed(outDir, manifestJson, sourceVideo) {
+  const { steps, viewport, videoScale = 1, totalMs } = manifestJson;
+  const camera = planCamera(steps, { viewport, totalMs });
+  const zoomedPath = path.join(outDir, 'demo-zoomed.mp4');
+  renderCamera(sourceVideo, zoomedPath, camera, { scale: videoScale, output: evenSize(viewport) });
+  return { zoomedPath, camera };
 }
 
 /**
@@ -86,10 +115,13 @@ async function typeWithCursor(page, locator, text, pace) {
  *     narration: { engine, voice, speed, baseUrl, cache }  // 可省略
  *     subtitles: { enabled, maxCharsPerCue }   // 可省略，預設開啟、每張字卡 18 字
  *     output: { mp4 }                   // 預設會多轉一份 demo.mp4
+ *     cursor: { scale, size, rippleSize, rippleColor }  // 假游標大小，預設放大 1.5 倍
+ *     autoZoom: true | { zoom }         // click / fill 自動推近，另輸出 demo-zoomed.mp4
+ *     videoScale: 2                     // 錄影像素倍率；有 zoom 時預設 2（放大才不糊）
  *     steps: [
  *       { type: 'goto',    url, waitUntil, label, narration },
- *       { type: 'fill',    selector|role+name|placeholder, value, label, narration },
- *       { type: 'click',   selector|role+name|placeholder|text, label, narration },
+ *       { type: 'fill',    selector|role+name|placeholder, value, zoom, label, narration },
+ *       { type: 'click',   selector|role+name|placeholder|text, zoom, label, narration },
  *       { type: 'waitFor', selector|role+name|placeholder|text, state, timeout, label },
  *       { type: 'wait',    ms, label, narration },
  *     ]
@@ -106,7 +138,10 @@ async function typeWithCursor(page, locator, text, pace) {
  * options.dryRun：只走一次流程確認每一步都對得到元素——不錄影、不合成語音、
  * 不刪 outDir（輸出放到系統暫存資料夾），幾秒內就知道 scenario 能不能跑。
  *
- * 回傳 { ok, videoPath, narratedVideoPath, mp4Path, manifestPath, manifest, srtPath, vttPath, outDir }。
+ * zoom：step.zoom 是數字就用那個倍率、true 用預設倍率、false 不放大；沒寫就看
+ * scenario.autoZoom。有任何一步會放大，就用 2 倍像素錄影，並另外輸出 demo-zoomed.mp4。
+ *
+ * 回傳 { ok, videoPath, narratedVideoPath, mp4Path, zoomedPath, manifestPath, manifest, srtPath, vttPath, outDir }。
  * manifest 記錄每個 step 相對影片開頭的起訖時間（毫秒），以及旁白自己的起點與長度。
  */
 export async function runScenario(scenario, { dryRun = false } = {}) {
@@ -119,10 +154,16 @@ export async function runScenario(scenario, { dryRun = false } = {}) {
     narration: narrationOpts = {},
     subtitles: subtitleOpts = {},
     output: outputOpts = {},
+    cursor: cursorOpts = {},
     steps,
   } = scenario;
 
   if (!scenario.outDir) throw new Error('scenario.outDir 必填');
+  scenario = { ...scenario, outDir: normalizeOutDir(scenario.outDir) };
+  // 先組好游標 script：設定寫錯要在刪 outDir、開瀏覽器之前就報錯。
+  const cursorScript = cursorInitScript(cursorOpts);
+  const usesZoom = scenarioUsesZoom(scenario); // zoom 寫錯也在這裡就報錯
+  const videoScale = dryRun ? 1 : (scenario.videoScale ?? (usesZoom ? 2 : 1));
   const outDir = dryRun
     ? path.join(os.tmpdir(), `screencast-dry-run-${path.basename(scenario.outDir)}`)
     : scenario.outDir;
@@ -146,13 +187,21 @@ export async function runScenario(scenario, { dryRun = false } = {}) {
     if (hits) console.log(`  其中 ${hits} 句來自快取`);
   }
 
-  const browser = await chromium.launch();
+  // 高解析度錄影：Playwright 的 recordVideo 會忽略 deviceScaleFactor，只錄 CSS px
+  // 大小的畫面、其餘填灰色；要加 --force-device-scale-factor 才錄得到真正的 2 倍細節。
+  // 頁面看到的 viewport（innerWidth）不變，排版與點擊座標都不受影響。
+  const browser = await chromium.launch(
+    videoScale > 1 ? { args: [`--force-device-scale-factor=${videoScale}`] } : {},
+  );
   const context = await browser.newContext({
     viewport,
-    ...(dryRun ? {} : { recordVideo: { dir: outDir, size: viewport } }),
+    ...(videoScale > 1 ? { deviceScaleFactor: videoScale } : {}),
+    ...(dryRun ? {} : {
+      recordVideo: { dir: outDir, size: { width: viewport.width * videoScale, height: viewport.height * videoScale } },
+    }),
   });
   context.setDefaultTimeout(timeout);
-  await context.addInitScript(CURSOR_INIT_SCRIPT);
+  await context.addInitScript(cursorScript);
   const page = await context.newPage();
   page.on('pageerror', (err) => console.log('  [pageerror]', err.message));
 
@@ -169,6 +218,7 @@ export async function runScenario(scenario, { dryRun = false } = {}) {
     let ok = true;
     let errorMessage;
     let narrationStartMs;
+    let action;
 
     try {
       switch (step.type) {
@@ -186,10 +236,10 @@ export async function runScenario(scenario, { dryRun = false } = {}) {
           break;
         }
         case 'fill':
-          await typeWithCursor(page, locate(page, step), fillValue(step), pace);
+          action = await typeWithCursor(page, locate(page, step), fillValue(step), pace);
           break;
         case 'click':
-          await clickWithCursor(page, locate(page, step), pace);
+          action = await clickWithCursor(page, locate(page, step), pace);
           break;
         case 'waitFor':
           await locate(page, step).waitFor({ state: step.state ?? 'visible', timeout: step.timeout ?? timeout });
@@ -228,14 +278,22 @@ export async function runScenario(scenario, { dryRun = false } = {}) {
       // 兩者差的就是那段操作時間。沒存這兩個欄位的話，字幕會整句提早出現。
       narrationStartMs,
       narrationDurationMs: narrationAudio?.durationMs,
+      // 鏡頭運動用：點在哪個元素（CSS px）、什麼時候按下去、這步要不要放大
+      focus: action?.box && { x: action.box.x, y: action.box.y, w: action.box.width, h: action.box.height },
+      actionMs: action ? action.at - t0 : undefined,
+      zoom: resolveZoom(step, scenario) ?? undefined,
     });
 
     if (!ok && abortOnError) break;
   }
 
-  await page.screenshot({ path: path.join(outDir, 'final.png'), fullPage: true }).catch(() => {});
+  // 只截目前畫面，不用 fullPage：fullPage 會暫時把 viewport 撐大，這段會被錄進
+  // 影片結尾（2 倍像素錄影時是畫面縮到左上角、旁邊一片灰）。
+  await page.screenshot({ path: path.join(outDir, 'final.png') }).catch(() => {});
 
   const video = page.video();
+  // 影片在 context 關閉時結束，totalMs 在這裡量才接近影片長度
+  const totalMs = Date.now() - t0;
   await context.close();
 
   let videoPath;
@@ -253,7 +311,8 @@ export async function runScenario(scenario, { dryRun = false } = {}) {
   }
 
   const manifestPath = path.join(outDir, 'manifest.json');
-  fs.writeFileSync(manifestPath, JSON.stringify({ steps: manifest, totalMs: Date.now() - t0, dryRun }, null, 2));
+  const manifestJson = { steps: manifest, totalMs, dryRun, viewport, videoScale };
+  fs.writeFileSync(manifestPath, JSON.stringify(manifestJson, null, 2));
 
   // 字幕直接從 manifest 推出來，不用再打一次 TTS——文字跟時間戳錄的時候就都有了。
   let srtPath;
@@ -282,12 +341,25 @@ export async function runScenario(scenario, { dryRun = false } = {}) {
   if (videoPath && outputOpts.mp4 !== false) {
     mp4Path = path.join(outDir, 'demo.mp4');
     try {
-      encodeMp4(narratedVideoPath ?? videoPath, mp4Path);
+      encodeMp4(narratedVideoPath ?? videoPath, mp4Path, evenSize(viewport));
       console.log('mp4:', mp4Path);
     } catch (err) {
       mp4Path = undefined;
       console.error('  ✗ 轉 mp4 失敗（webm 沒事）:', err.message.split('\n')[0]);
       console.error('    需要編了 libx264 的 ffmpeg：brew install ffmpeg');
+    }
+  }
+
+  let zoomedPath;
+  if (videoPath && usesZoom) {
+    try {
+      const r = renderZoomed(outDir, manifestJson, narratedVideoPath ?? videoPath);
+      zoomedPath = r.zoomedPath;
+      manifestJson.camera = r.camera;
+      fs.writeFileSync(manifestPath, JSON.stringify(manifestJson, null, 2));
+      console.log('運鏡版:', zoomedPath);
+    } catch (err) {
+      console.error('  ✗ 輸出運鏡版失敗（其他影片沒事）:', err.message.split('\n').slice(-3).join(' | '));
     }
   }
 
@@ -300,5 +372,55 @@ export async function runScenario(scenario, { dryRun = false } = {}) {
   if (narratedVideoPath) console.log('帶旁白的影片:', narratedVideoPath);
   console.log('manifest:', manifestPath);
 
-  return { ok, outDir, videoPath, narratedVideoPath, mp4Path, manifestPath, manifest, srtPath, vttPath };
+  return { ok, outDir, videoPath, narratedVideoPath, mp4Path, zoomedPath, manifestPath, manifest, srtPath, vttPath };
+}
+
+/**
+ * --zoom-only：不重錄，只依 scenario 目前的 zoom 設定重新輸出 demo-zoomed.mp4。
+ * 調倍率、決定哪幾步要推近，幾秒就能看結果。
+ *
+ * 前提是 scenario 的步驟跟錄影時一樣（數量與 type 一一對應）——步驟改了，
+ * 時間軸就不一樣，只能重錄。
+ */
+export async function rezoomScenario(scenario) {
+  if (!scenario.outDir) throw new Error('scenario.outDir 必填');
+  const outDir = normalizeOutDir(scenario.outDir);
+  const manifestPath = path.join(outDir, 'manifest.json');
+  if (!fs.existsSync(manifestPath)) throw new Error(`找不到 ${manifestPath}，要先正式錄一次`);
+  const manifestJson = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+  if (manifestJson.dryRun) throw new Error('這份 manifest 是 dry-run 產生的，沒有影片可以運鏡');
+  if (!manifestJson.viewport) throw new Error('這支是舊版錄的（manifest 沒有 viewport／點擊位置），要重錄一次才能運鏡');
+
+  const recorded = manifestJson.steps;
+  const same = recorded.length === scenario.steps.length
+    && recorded.every((m, i) => m.type === scenario.steps[i].type);
+  if (!same) {
+    throw new Error('scenario 的步驟跟錄影時不一樣（數量或 type 對不上）——改了步驟要重錄，--zoom-only 只能調 zoom');
+  }
+
+  recorded.forEach((m, i) => {
+    const z = resolveZoom(scenario.steps[i], scenario);
+    if (z == null) delete m.zoom;
+    else m.zoom = z;
+  });
+
+  const zoomedPath = path.join(outDir, 'demo-zoomed.mp4');
+  if (!recorded.some((m) => m.zoom)) {
+    fs.rmSync(zoomedPath, { force: true });
+    delete manifestJson.camera;
+    fs.writeFileSync(manifestPath, JSON.stringify(manifestJson, null, 2));
+    console.log('scenario 沒有任何一步要放大，已移除 demo-zoomed.mp4');
+    return { ok: true, zoomedPath: undefined };
+  }
+
+  if ((manifestJson.videoScale ?? 1) < 2) {
+    console.warn('  ! 這支是用 1 倍像素錄的，放大後會糊。想要清楚的話正式重錄一次（有 zoom 會自動用 2 倍錄）');
+  }
+  const narrated = path.join(outDir, 'demo-narrated.webm');
+  const source = fs.existsSync(narrated) ? narrated : path.join(outDir, 'demo.webm');
+  const r = renderZoomed(outDir, manifestJson, source);
+  manifestJson.camera = r.camera;
+  fs.writeFileSync(manifestPath, JSON.stringify(manifestJson, null, 2));
+  console.log('運鏡版:', r.zoomedPath);
+  return { ok: true, zoomedPath: r.zoomedPath };
 }

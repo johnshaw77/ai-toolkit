@@ -10,8 +10,40 @@
 // 最後位置記在 sessionStorage：點連結換頁後 script 會在新頁面重新注入，
 // 不記的話游標會停在畫面外，直到下一次 mousemove 才出現——
 // 觀眾看到的就是「點完之後游標消失了」。
-export const CURSOR_INIT_SCRIPT = `
+
+// 箭頭圖形畫在 24×24 的 viewBox 裡，尖端在 (4, 2)。定位時要把尖端對準滑鼠座標，
+// 不是把 SVG 左上角對過去——放大之後差距會跟著放大。
+const BASE_SIZE = 24;
+const TIP_X = 4;
+const TIP_Y = 2;
+const BASE_RIPPLE = 40;
+
+/**
+ * 把 scenario.cursor 換算成實際尺寸。
+ *   scale       游標與漣漪一起縮放，預設 1.5（24px 的原圖在 1080p 錄影裡太小）
+ *   size        游標邊長（px），給了就蓋過 scale
+ *   rippleSize  漣漪直徑（px），給了就蓋過 scale
+ *   rippleColor 漣漪顏色
+ */
+export function cursorOptions({ scale = 1.5, size, rippleSize, rippleColor = 'rgba(255,100,50,0.55)' } = {}) {
+  if (!(Number(scale) > 0)) throw new Error(`cursor.scale 要是正數，收到 ${scale}`);
+  const cursorSize = Number(size ?? BASE_SIZE * scale);
+  if (!(cursorSize > 0)) throw new Error(`cursor.size 要是正數，收到 ${size}`);
+  const k = cursorSize / BASE_SIZE;
+  return {
+    size: cursorSize,
+    tipX: TIP_X * k,
+    tipY: TIP_Y * k,
+    rippleSize: Number(rippleSize ?? BASE_RIPPLE * scale),
+    rippleColor: String(rippleColor),
+  };
+}
+
+export function cursorInitScript(options) {
+  const o = cursorOptions(options);
+  return `
 (() => {
+  const O = ${JSON.stringify(o)};
   function init() {
     const style = document.createElement('style');
     style.textContent = \`
@@ -24,13 +56,13 @@ export const CURSOR_INIT_SCRIPT = `
 
     const cursor = document.createElement('div');
     cursor.id = '__pw_fake_cursor';
-    cursor.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24"><path d="M4 2 L4 20 L9 15 L12.5 22 L15 21 L11.5 14 L18 14 Z" fill="#ffffff" stroke="#111111" stroke-width="1.3"/></svg>';
+    cursor.innerHTML = '<svg width="' + O.size + '" height="' + O.size + '" viewBox="0 0 ${BASE_SIZE} ${BASE_SIZE}" style="display:block"><path d="M4 2 L4 20 L9 15 L12.5 22 L15 21 L11.5 14 L18 14 Z" fill="#ffffff" stroke="#111111" stroke-width="1.3"/></svg>';
     const ripple = document.createElement('div');
     ripple.id = '__pw_fake_ripple';
-    cursor.style.cssText = 'position:fixed;top:0;left:0;width:24px;height:24px;pointer-events:none;z-index:2147483647;transform:translate(-4000px,-4000px);';
+    cursor.style.cssText = 'position:fixed;top:0;left:0;width:' + O.size + 'px;height:' + O.size + 'px;pointer-events:none;z-index:2147483647;transform:translate(-4000px,-4000px);';
     const POS_KEY = '__pw_fake_cursor_pos';
     function place(x, y) {
-      cursor.style.transform = 'translate(' + (x - 2) + 'px,' + (y - 2) + 'px)';
+      cursor.style.transform = 'translate(' + (x - O.tipX) + 'px,' + (y - O.tipY) + 'px)';
     }
     try {
       const saved = JSON.parse(sessionStorage.getItem(POS_KEY) || 'null');
@@ -38,7 +70,8 @@ export const CURSOR_INIT_SCRIPT = `
     } catch (e) {
       // sessionStorage 在某些頁面（sandbox iframe、about:blank）不能用，沒記到就算了
     }
-    ripple.style.cssText = 'position:fixed;top:0;left:0;width:40px;height:40px;margin-left:-20px;margin-top:-20px;border-radius:50%;background:rgba(255,100,50,0.55);pointer-events:none;z-index:2147483646;opacity:0;';
+    const half = O.rippleSize / 2;
+    ripple.style.cssText = 'position:fixed;top:0;left:0;width:' + O.rippleSize + 'px;height:' + O.rippleSize + 'px;margin-left:-' + half + 'px;margin-top:-' + half + 'px;border-radius:50%;background:' + O.rippleColor + ';pointer-events:none;z-index:2147483646;opacity:0;';
 
     function mount() {
       const root = document.documentElement;
@@ -69,3 +102,7 @@ export const CURSOR_INIT_SCRIPT = `
   init();
 })();
 `;
+}
+
+// 預設尺寸的版本，給不需要調整的呼叫端用。
+export const CURSOR_INIT_SCRIPT = cursorInitScript();
