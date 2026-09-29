@@ -9,7 +9,13 @@
 
 ## 安裝（每台機器做一次）
 
-Mac、Windows 的完整步驟見 [repo 根的 README](../README.md#2-screencastskill)。
+最省事的是在 Claude Code 裡直接說：
+
+```
+照 github.com/johnshaw77/ai-toolkit 的 README 幫我裝 screencast
+```
+
+自己動手的話，Mac、Windows 的完整步驟見 [repo 根的 README](../README.md#2-screencastskill)。
 裝完跑：
 
 ```bash

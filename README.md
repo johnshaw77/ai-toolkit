@@ -32,7 +32,16 @@
 
 ### 2. screencast（skill）
 
-Mac 與 Windows 都能用。先裝好 [Node.js](https://nodejs.org)（18 以上）與 git。
+**最省事的裝法：在 Claude Code 裡直接說**
+
+```
+照 github.com/johnshaw77/ai-toolkit 的 README 幫我裝 screencast
+```
+
+Claude 會照下面的步驟裝（Mac、Windows 都行），最後跑 `npm run doctor` 確認全部就緒；
+中間缺什麼、哪步失敗，它會自己排除。更新也一樣，說「幫我更新 screencast」就好。
+
+想自己動手的話，照下面做。Mac 與 Windows 都能用，先裝好 [Node.js](https://nodejs.org)（18 以上）與 git。
 
 **Mac**
 
