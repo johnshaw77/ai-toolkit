@@ -81,8 +81,14 @@ cd ~/.claude/skills/screencast && npm run doctor
    ]
    ```
 
-   - 只有 `click`／`dblclick`／`rightClick`／`fill` 會推近；`goto` 拉回全畫面；`wait`／`waitFor` 維持目前鏡頭
-     （點送出後等結果出現，鏡頭會停在那裡讓人看清楚）。
+   - 只有 `click`／`dblclick`／`rightClick`／`fill` 會推近；`goto` 拉回全畫面。
+   - **`waitFor` 等到內容出現時，鏡頭自動拉回全畫面**（`autoZoom` 開著就預設開）：觀眾這時要看的是結果，
+     不是剛按下去的按鈕。例如「輸入框推近 → 按搜尋 → `waitFor` 結果」，結果出來就是全畫面。
+     例外：鏡頭已經是全畫面就不動；下一個推近動作小於 1.5 秒內就到，也不拉（拉回再推近只會來回晃）。
+     不要這個行為：`autoZoom: { zoom: 1.8, releaseOnWait: false }`，`wait`／`waitFor` 就維持目前鏡頭。
+   - **手動控制**：任何 `wait`／`waitFor` 寫 `zoom: false`，就在這一步拉回全畫面（不管 `releaseOnWait`）。
+     `waitFor` 也可以寫 `zoom: 1.5`（或 `true`），鏡頭對準「等到的那個元素」，例如放大搜尋結果區。
+     `wait` 沒有對象可以放大，寫數字會報錯。
    - 鏡頭在「按下去那一刻」剛好到位，跟游標一起移動。元素太大（整張表格）會自動降低倍率。
    - 有任何一步要推近，就**自動用 2 倍像素錄影**（`demo.webm` 會是 viewport 的兩倍大），
      推近後字才不會糊；`demo.mp4`／`demo-zoomed.mp4` 都縮回 viewport 大小輸出。
