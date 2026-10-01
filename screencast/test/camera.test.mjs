@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { DEFAULT_ZOOM, focusRect, planCamera, renderCamera, resolveZoom, scenarioUsesZoom } from '../lib/camera.mjs';
+import { DEFAULT_ZOOM, explicitRelease, focusRect, planCamera, releaseOnWait, renderCamera, resolveZoom, scenarioUsesZoom } from '../lib/camera.mjs';
 
 const VP = { width: 1280, height: 800 };
 const FULL = { x: 0, y: 0, w: 1280, h: 800 };
@@ -208,4 +208,103 @@ test('renderCamera：上百個關鍵格的運算式 ffmpeg 也吃得下', () => 
   const out = path.join(tmp, 'small-zoomed.mp4');
   renderCamera(src, out, kfs, { scale: 2, output: { width: 160, height: 100 } });
   assert.ok(fs.statSync(out).size > 0);
+});
+
+// ---- waitFor 自動拉回、zoom:false 明確拉回、waitFor 指定倍率 ----
+
+const FOCUS = { x: 600, y: 380, w: 80, h: 40 };
+const zoomedClick = () => step({ type: 'click', tStartMs: 0, tEndMs: 2000, actionMs: 800, focus: FOCUS, zoom: 2 });
+
+test('releaseOnWait：autoZoom 開著就預設開，可以用 releaseOnWait:false 關掉', () => {
+  assert.equal(releaseOnWait({}), false);
+  assert.equal(releaseOnWait({ autoZoom: false }), false);
+  assert.equal(releaseOnWait({ autoZoom: true }), true);
+  assert.equal(releaseOnWait({ autoZoom: { zoom: 1.8 } }), true);
+  assert.equal(releaseOnWait({ autoZoom: { zoom: 1.8, releaseOnWait: false } }), false);
+});
+
+test('planCamera：releaseOnWait 開著，等了才出現的 waitFor 在出現那一刻拉回全畫面', () => {
+  const kfs = planCamera([
+    zoomedClick(),
+    step({ type: 'waitFor', tStartMs: 2000, tEndMs: 4000, actionMs: 3500 }),
+    step({ type: 'wait', tStartMs: 4000, tEndMs: 6000 }),
+  ], { viewport: VP, totalMs: 6000, releaseOnWait: true });
+  const out = kfs.find((k) => k.t === 3500);
+  assert.ok(out && approx(rectOf(out), FULL), JSON.stringify(kfs));
+  assert.equal(kfs[kfs.indexOf(out) - 1].t, 2800, '轉場 700ms，從上一格的時間點之後開始');
+});
+
+test('planCamera：releaseOnWait 關著（預設），waitFor 維持鏡頭', () => {
+  const kfs = planCamera([
+    zoomedClick(),
+    step({ type: 'waitFor', tStartMs: 2000, tEndMs: 4000, actionMs: 3500 }),
+  ], { viewport: VP, totalMs: 6000 });
+  assert.deepEqual(kfs.filter((k) => k.t > 800 && k.t < 4000), []);
+});
+
+test('planCamera：waitFor 不用「等了多久」判斷（前一步有旁白，結果早就出現），一樣會拉回', () => {
+  const kfs = planCamera([
+    zoomedClick(),
+    step({ type: 'waitFor', tStartMs: 2000, tEndMs: 2010, actionMs: 2005 }),
+    step({ type: 'wait', tStartMs: 2010, tEndMs: 5000 }),
+  ], { viewport: VP, totalMs: 6000, releaseOnWait: true });
+  const out = kfs.find((k) => k.t === 2005);
+  assert.ok(out && approx(rectOf(out), FULL), JSON.stringify(kfs));
+});
+
+test('planCamera：下一個推近動作馬上就到（小於 1.5 秒）→ 不拉回，避免鏡頭來回晃', () => {
+  const kfs = planCamera([
+    zoomedClick(),
+    step({ type: 'waitFor', tStartMs: 2000, tEndMs: 2100, actionMs: 2050 }),
+    step({ type: 'click', tStartMs: 2100, tEndMs: 4000, actionMs: 3000, focus: { x: 640, y: 400, w: 80, h: 40 }, zoom: 2 }),
+  ], { viewport: VP, totalMs: 6000, releaseOnWait: true });
+  assert.ok(!kfs.some((k) => k.t > 800 && k.t <= 3000 && approx(rectOf(k), FULL)), JSON.stringify(kfs));
+});
+
+test('planCamera：鏡頭本來就是全畫面時，waitFor 不產生多餘的關鍵格', () => {
+  const kfs = planCamera([
+    step({ type: 'waitFor', tStartMs: 0, tEndMs: 1000, actionMs: 900 }),
+  ], { viewport: VP, totalMs: 3000, releaseOnWait: true });
+  assert.equal(kfs.length, 1);
+});
+
+test('planCamera：waitFor 寫 zoom:false 一定拉回（即使 releaseOnWait 關著、元素一開始就在）', () => {
+  const kfs = planCamera([
+    zoomedClick(),
+    step({ type: 'waitFor', tStartMs: 2000, tEndMs: 2100, actionMs: 2050, release: true }),
+  ], { viewport: VP, totalMs: 6000 });
+  const out = kfs.find((k) => k.t === 2050);
+  assert.ok(out && approx(rectOf(out), FULL), JSON.stringify(kfs));
+});
+
+test('planCamera：wait 寫 zoom:false ＝ 從這步開始拉回全畫面', () => {
+  const kfs = planCamera([
+    zoomedClick(),
+    step({ type: 'wait', tStartMs: 2000, tEndMs: 4000, release: true }),
+  ], { viewport: VP, totalMs: 6000 });
+  const out = kfs.find((k) => k.t === 2700);
+  assert.ok(out && approx(rectOf(out), FULL), JSON.stringify(kfs));
+});
+
+test('planCamera：waitFor 指定倍率 → 鏡頭對準等到的元素', () => {
+  const target = { x: 100, y: 100, w: 200, h: 100 };
+  const kfs = planCamera([
+    step({ type: 'waitFor', tStartMs: 0, tEndMs: 2000, actionMs: 1500, focus: target, zoom: 1.5 }),
+  ], { viewport: VP, totalMs: 4000 });
+  const arrive = kfs.find((k) => k.t === 1500);
+  assert.ok(arrive && approx(rectOf(arrive), focusRect(target, 1.5, VP)), JSON.stringify(kfs));
+});
+
+test('resolveZoom / explicitRelease：waitFor 的 zoom，wait 只能 zoom:false', () => {
+  assert.equal(resolveZoom({ type: 'waitFor' }, { autoZoom: true }), null, 'waitFor 不吃 autoZoom');
+  assert.equal(resolveZoom({ type: 'waitFor', zoom: 1.6 }), 1.6);
+  assert.equal(resolveZoom({ type: 'waitFor', zoom: true }, { autoZoom: { zoom: 1.8 } }), 1.8);
+  assert.equal(resolveZoom({ type: 'waitFor', zoom: false }), null);
+  assert.throws(() => resolveZoom({ type: 'wait', zoom: 2, label: '停' }), /step "停".*只能寫 zoom: false/);
+  assert.equal(resolveZoom({ type: 'wait', zoom: false }), null);
+  assert.equal(explicitRelease({ type: 'wait', zoom: false }), true);
+  assert.equal(explicitRelease({ type: 'waitFor', zoom: false }), true);
+  assert.equal(explicitRelease({ type: 'click', zoom: false }), false, 'click 的 zoom:false 本來就會拉回，不算 release 標記');
+  assert.equal(explicitRelease({ type: 'wait' }), false);
+  assert.equal(scenarioUsesZoom({ steps: [{ type: 'waitFor', zoom: 2 }] }), true);
 });

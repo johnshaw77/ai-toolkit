@@ -16,6 +16,12 @@ const MIN_ZOOM = 1.15;
 const KEEP_RATIO = 0.7;
 
 const ZOOMABLE = new Set(['click', 'dblclick', 'rightClick', 'fill']);
+// waitFor 也可以指定倍率（鏡頭對準等到的那個元素，例如搜尋結果區）；wait / goto 只能用 zoom:false 拉回
+const FOCUS_ON = new Set([...ZOOMABLE, 'waitFor']);
+const RELEASE_ONLY = new Set(['wait', 'waitFor']);
+// waitFor 自動拉回時，如果下一個推近動作很快就到（小於這個間隔），拉回再推近只會讓鏡頭來回晃，就不拉
+// （不用「waitFor 等了多久」判斷：前一步有旁白時，等旁白講完結果早就出現了，waitFor 幾乎不用等）
+const RELEASE_MIN_GAP_MS = 1500;
 
 /**
  * 這一步的放大倍率。
@@ -23,9 +29,21 @@ const ZOOMABLE = new Set(['click', 'dblclick', 'rightClick', 'fill']);
  *   step.zoom 是數字    → 用這個倍率
  *   step.zoom === true  → 用預設倍率
  *   沒寫                → scenario.autoZoom 開著就用預設倍率，否則不放大
- * 只有 click / fill 會放大；其他 type 回傳 null（由 planCamera 決定維持或拉回）。
+ * 會放大的 type：click / dblclick / rightClick / fill；waitFor 只有明確寫了倍率才放大
+ * （不吃 autoZoom）。其他回傳 null（由 planCamera 決定維持或拉回）。
  */
 export function resolveZoom(step, { autoZoom = false } = {}) {
+  if (step.type === 'waitFor') {
+    if (step.zoom === true) return typeof autoZoom === 'object' && autoZoom?.zoom ? autoZoom.zoom : DEFAULT_ZOOM;
+    if (typeof step.zoom === 'number') {
+      if (!(step.zoom >= 1)) throw new Error(`step "${step.label ?? step.type}" 的 zoom 要 >= 1，收到 ${step.zoom}`);
+      return step.zoom;
+    }
+    return null;
+  }
+  if (step.type === 'wait' && step.zoom != null && step.zoom !== false) {
+    throw new Error(`step "${step.label ?? step.type}"：wait 沒有對象可以放大，只能寫 zoom: false（拉回全畫面）`);
+  }
   if (!ZOOMABLE.has(step.type)) return null;
   const auto = typeof autoZoom === 'object' && autoZoom !== null ? true : Boolean(autoZoom);
   const defaultZoom = typeof autoZoom === 'object' && autoZoom?.zoom ? autoZoom.zoom : DEFAULT_ZOOM;
@@ -36,6 +54,20 @@ export function resolveZoom(step, { autoZoom = false } = {}) {
   }
   if (step.zoom === true) return defaultZoom;
   return auto ? defaultZoom : null;
+}
+
+/** wait / waitFor 寫了 zoom: false ＝ 明確要求在這裡把鏡頭拉回全畫面。 */
+export function explicitRelease(step) {
+  return RELEASE_ONLY.has(step.type) && step.zoom === false;
+}
+
+/**
+ * waitFor 等到內容出現時，要不要自動把鏡頭拉回全畫面。autoZoom 開著就預設要
+ * （觀眾這時要看的是結果，不是剛按下去的按鈕）；`autoZoom: { releaseOnWait: false }` 關掉。
+ */
+export function releaseOnWait({ autoZoom = false } = {}) {
+  if (!autoZoom) return false;
+  return !(typeof autoZoom === 'object' && autoZoom.releaseOnWait === false);
 }
 
 /** scenario 有沒有任何一步會放大（決定要不要用高解析度錄影）。 */
@@ -85,11 +117,14 @@ function insideCore(focus, rect) {
  *   所以會跟游標一起移動，而不是點完才追過去。
  * - click / fill 沒有 zoom：拉回全畫面。
  * - goto：拉回全畫面（換頁了，舊的焦點沒有意義）。
- * - wait / waitFor / 失敗的步驟：維持目前的鏡頭。
+ * - wait / waitFor / 失敗的步驟：維持目前的鏡頭，例外：
+ *   · waitFor 寫了 zoom: 倍率 → 鏡頭對準等到的元素
+ *   · waitFor 寫了 zoom: false，或 releaseOnWait 開著、鏡頭還停在舊目標且下一個推近動作不是馬上到 → 拉回全畫面
+ *   · wait 寫了 zoom: false → 拉回全畫面
  * - 下一個焦點還在目前鏡頭的中央區域、倍率又一樣：不動，避免小幅晃動。
  * - 最後一步做完就拉回全畫面。
  */
-export function planCamera(steps, { viewport, totalMs, transitionMs = TRANSITION_MS }) {
+export function planCamera(steps, { viewport, totalMs, transitionMs = TRANSITION_MS, releaseOnWait = false }) {
   const vp = viewport;
   let cur = full(vp);
   let curZoom = null;
@@ -106,20 +141,48 @@ export function planCamera(steps, { viewport, totalMs, transitionMs = TRANSITION
     cur = target;
   };
 
-  for (const s of steps) {
+  const zoomTo = (s) => {
+    const arrive = s.actionMs ?? s.tStartMs + transitionMs;
+    if (s.zoom) {
+      const keep = curZoom === s.zoom && insideCore(s.focus, cur);
+      if (!keep) moveTo(focusRect(s.focus, s.zoom, vp), arrive);
+      curZoom = sameRect(cur, full(vp)) ? null : s.zoom;
+    } else {
+      moveTo(full(vp), arrive);
+      curZoom = null;
+    }
+  };
+
+  // 這一步之後，下一個會動鏡頭的動作什麼時候到（沒有就是 Infinity）
+  const nextCameraMoveMs = (from) => {
+    for (let j = from + 1; j < steps.length; j++) {
+      const n = steps[j];
+      if (n.type === 'goto') return n.tStartMs;
+      if (ZOOMABLE.has(n.type) && n.ok !== false && n.focus) return n.actionMs ?? n.tStartMs;
+    }
+    return Infinity;
+  };
+
+  for (const [i, s] of steps.entries()) {
     if (s.type === 'goto') {
       moveTo(full(vp), s.tStartMs + transitionMs);
       curZoom = null;
+    } else if (FOCUS_ON.has(s.type) && s.ok !== false && s.zoom && s.focus) {
+      zoomTo(s);
     } else if (ZOOMABLE.has(s.type) && s.ok !== false && s.focus) {
-      const arrive = s.actionMs ?? s.tStartMs + transitionMs;
-      if (s.zoom) {
-        const keep = curZoom === s.zoom && insideCore(s.focus, cur);
-        if (!keep) moveTo(focusRect(s.focus, s.zoom, vp), arrive);
-        curZoom = sameRect(cur, full(vp)) ? null : s.zoom;
-      } else {
-        moveTo(full(vp), arrive);
+      zoomTo(s); // 沒有 zoom：拉回全畫面
+    } else if (s.type === 'waitFor' && s.ok !== false) {
+      // 等到內容出現 → 拉回全畫面。明確寫了 zoom:false 一定拉回；
+      // 自動拉回只在「鏡頭還停在舊目標上」且下一個推近動作不是馬上到的時候
+      const at = s.actionMs ?? s.tStartMs + transitionMs;
+      const stale = curZoom != null;
+      if (s.release || (releaseOnWait && stale && nextCameraMoveMs(i) - at >= RELEASE_MIN_GAP_MS)) {
+        moveTo(full(vp), at);
         curZoom = null;
       }
+    } else if (s.type === 'wait' && s.release) {
+      moveTo(full(vp), s.tStartMs + transitionMs);
+      curZoom = null;
     }
   }
 

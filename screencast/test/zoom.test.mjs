@@ -115,3 +115,27 @@ test('step.zoom 寫錯：開瀏覽器前就報錯', async () => {
   await assert.rejects(runScenario(scenario), /zoom 要 >= 1/);
   assert.ok(!fs.existsSync(path.join(tmp, 'bad')));
 });
+
+test('autoZoom 預設：等了才出現的 waitFor 在結果出現時拉回全畫面；releaseOnWait:false 則維持', async () => {
+  const outA = path.join(tmp, 'release-on');
+  const a = await runScenario(zoomScenario(outA));
+  const mA = JSON.parse(fs.readFileSync(a.manifestPath, 'utf-8'));
+  assert.equal(mA.releaseOnWait, true);
+  const waitA = mA.steps[3];
+  assert.ok(waitA.actionMs != null, 'waitFor 要記下等到的時間點');
+  assert.ok(mA.camera.some((k) => k.w === 1000 && k.t > mA.steps[2].actionMs && k.t <= waitA.actionMs), '結果出現前後鏡頭回到全畫面：' + JSON.stringify(mA.camera));
+
+  const outB = path.join(tmp, 'release-off');
+  const b = await runScenario(zoomScenario(outB, { autoZoom: { zoom: 2, releaseOnWait: false } }));
+  const mB = JSON.parse(fs.readFileSync(b.manifestPath, 'utf-8'));
+  assert.equal(mB.releaseOnWait, false);
+  const waitB = mB.steps[3];
+  assert.ok(!mB.camera.some((k) => k.w === 1000 && k.t > mB.steps[2].actionMs && k.t <= waitB.actionMs), '關掉後 waitFor 期間維持放大：' + JSON.stringify(mB.camera));
+
+  // --zoom-only 也吃新規則：把 B 的設定改成預設（開），不重錄就會拉回
+  const re = await rezoomScenario(zoomScenario(outB));
+  assert.ok(re.ok);
+  const mB2 = JSON.parse(fs.readFileSync(path.join(outB, 'manifest.json'), 'utf-8'));
+  assert.equal(mB2.releaseOnWait, true);
+  assert.ok(mB2.camera.some((k) => k.w === 1000 && k.t > mB2.steps[2].actionMs && k.t <= mB2.steps[3].actionMs));
+});

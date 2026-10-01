@@ -2,7 +2,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { planCamera, renderCamera, resolveZoom, scenarioUsesZoom } from './camera.mjs';
+import { explicitRelease, planCamera, releaseOnWait, renderCamera, resolveZoom, scenarioUsesZoom } from './camera.mjs';
 import { cursorInitScript } from './cursor-overlay.mjs';
 import { encodeMp4 } from './encode.mjs';
 import { fillValue, locate } from './locate.mjs';
@@ -100,7 +100,7 @@ const evenSize = (vp) => ({ width: vp.width - (vp.width % 2), height: vp.height 
  */
 function renderZoomed(outDir, manifestJson, sourceVideo) {
   const { steps, viewport, videoScale = 1, totalMs } = manifestJson;
-  const camera = planCamera(steps, { viewport, totalMs });
+  const camera = planCamera(steps, { viewport, totalMs, releaseOnWait: Boolean(manifestJson.releaseOnWait) });
   const zoomedPath = path.join(outDir, 'demo-zoomed.mp4');
   renderCamera(sourceVideo, zoomedPath, camera, { scale: videoScale, output: evenSize(viewport) });
   return { zoomedPath, camera };
@@ -129,7 +129,8 @@ function renderZoomed(outDir, manifestJson, sourceVideo) {
  *       { type: 'click',   selector|role+name|placeholder|text, zoom, label, narration },
  *       { type: 'dblclick',   （定位同 click）雙擊 },
  *       { type: 'rightClick', （定位同 click）右鍵，會打開頁面的 contextmenu },
- *       { type: 'waitFor', selector|role+name|placeholder|text, state, timeout, label },
+ *       { type: 'waitFor', selector|role+name|placeholder|text, state, timeout, zoom, label },
+ *         // autoZoom 開著時，等了才出現的 waitFor 會自動把鏡頭拉回全畫面；zoom:false 強制拉回，zoom:倍率 對準那個元素
  *       { type: 'wait',    ms, label, narration },
  *     ]
  *   }
@@ -254,9 +255,13 @@ export async function runScenario(scenario, { dryRun = false } = {}) {
         case 'rightClick':
           action = await clickWithCursor(page, locate(page, step), pace, { button: 'right' });
           break;
-        case 'waitFor':
-          await locate(page, step).waitFor({ state: step.state ?? 'visible', timeout: step.timeout ?? timeout });
+        case 'waitFor': {
+          const locator = locate(page, step);
+          await locator.waitFor({ state: step.state ?? 'visible', timeout: step.timeout ?? timeout });
+          // 等到的時間點給鏡頭用（自動拉回）；有寫 zoom 倍率時再量元素位置，鏡頭才知道要對準哪裡
+          action = { at: Date.now(), box: resolveZoom(step, scenario) != null ? await locator.boundingBox().catch(() => null) : null };
           break;
+        }
         case 'wait':
           if (!narrationAudio) await page.waitForTimeout(step.ms ?? 800);
           break;
@@ -295,6 +300,7 @@ export async function runScenario(scenario, { dryRun = false } = {}) {
       focus: action?.box && { x: action.box.x, y: action.box.y, w: action.box.width, h: action.box.height },
       actionMs: action ? action.at - t0 : undefined,
       zoom: resolveZoom(step, scenario) ?? undefined,
+      release: explicitRelease(step) || undefined,
     });
 
     if (!ok && abortOnError) break;
@@ -324,7 +330,7 @@ export async function runScenario(scenario, { dryRun = false } = {}) {
   }
 
   const manifestPath = path.join(outDir, 'manifest.json');
-  const manifestJson = { steps: manifest, totalMs, dryRun, viewport, videoScale };
+  const manifestJson = { steps: manifest, totalMs, dryRun, viewport, videoScale, releaseOnWait: releaseOnWait(scenario) };
   fs.writeFileSync(manifestPath, JSON.stringify(manifestJson, null, 2));
 
   // 字幕直接從 manifest 推出來，不用再打一次 TTS——文字跟時間戳錄的時候就都有了。
@@ -415,7 +421,10 @@ export async function rezoomScenario(scenario) {
     const z = resolveZoom(scenario.steps[i], scenario);
     if (z == null) delete m.zoom;
     else m.zoom = z;
+    if (explicitRelease(scenario.steps[i])) m.release = true;
+    else delete m.release;
   });
+  manifestJson.releaseOnWait = releaseOnWait(scenario);
 
   const zoomedPath = path.join(outDir, 'demo-zoomed.mp4');
   if (!recorded.some((m) => m.zoom)) {

@@ -5,9 +5,11 @@
   <div id="target" style="width:200px;height:60px;margin:40px;border:1px solid #333">目標</div>
   <script>
     // 事件回報給測試伺服器：頁面關了之後測試還讀得到
+    // 每次回報「到目前為止的完整紀錄」：HTTP 到達順序不保證，測試取最長的那一筆
     const t = document.getElementById('target');
+    const log = [];
     for (const type of ['click', 'dblclick', 'contextmenu']) {
-      t.addEventListener(type, (e) => { fetch('/event?e=' + type + ':' + e.button); });
+      t.addEventListener(type, (e) => { log.push(type + ':' + e.button); fetch('/event?e=' + log.join(',')); });
     }
   </script>
 </body>
