@@ -40,11 +40,13 @@ cd ~/.claude/skills/screencast && npm run doctor
 
 2. **在目標專案裡寫一份 scenario 檔**（不是在這個 skill 目錄下！）。參考
    `examples/example-scenario.mjs` 的格式，通常放在該專案一個明顯的地方（例如
-   `lab/screencast/scenarios/`，或使用者指定的目錄）。五種 step type：
+   `lab/screencast/scenarios/`，或使用者指定的目錄）。step type：
 
    | type | 欄位 | 說明 |
    |---|---|---|
    | `goto` | `url`, `waitUntil`, `label` | 導覽；`url` 可以是完整網址，也可以是相對路徑（接在 `scenario.baseUrl` 後面） |
+   | `dblclick` | （定位同 `click`）, `label` | 雙擊：依序觸發 click、click、dblclick，和真人一樣；例如雙擊分頁標題 |
+   | `rightClick` | （定位同 `click`）, `label` | 右鍵：觸發 contextmenu，用來打開自訂的右鍵選單 |
    | `fill` | `selector`\|`role`+`name`\|`placeholder`, `value`, `label` | 定位輸入框後清空、打字（有打字動畫） |
    | `click` | `selector`\|`role`+`name`\|`placeholder`\|`text`, `label` | 移動游標（平滑、非瞬移）→ 漣漪 → 點擊 |
    | `waitFor` | `selector`\|`role`+`name`\|`placeholder`\|`text`, `state`, `timeout`, `label` | 等某個元素出現（`state` 預設 `visible`，也可以 `hidden`／`attached`／`detached`） |
@@ -79,7 +81,7 @@ cd ~/.claude/skills/screencast && npm run doctor
    ]
    ```
 
-   - 只有 `click`／`fill` 會推近；`goto` 拉回全畫面；`wait`／`waitFor` 維持目前鏡頭
+   - 只有 `click`／`dblclick`／`rightClick`／`fill` 會推近；`goto` 拉回全畫面；`wait`／`waitFor` 維持目前鏡頭
      （點送出後等結果出現，鏡頭會停在那裡讓人看清楚）。
    - 鏡頭在「按下去那一刻」剛好到位，跟游標一起移動。元素太大（整張表格）會自動降低倍率。
    - 有任何一步要推近，就**自動用 2 倍像素錄影**（`demo.webm` 會是 viewport 的兩倍大），

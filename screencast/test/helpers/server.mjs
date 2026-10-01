@@ -41,6 +41,7 @@ export function fakeDurationMs(text) {
  */
 export async function startServer() {
   const ttsCalls = [];
+  const pageEvents = [];
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://x');
 
@@ -62,6 +63,14 @@ export async function startServer() {
           res.end(silentWav(fakeDurationMs(json.input)));
         }, slow);
       });
+      return;
+    }
+
+    // fixture 頁面把使用者事件回報到這裡（頁面關了之後測試還讀得到）
+    if (url.pathname === '/event') {
+      pageEvents.push(url.searchParams.get('e'));
+      res.writeHead(204);
+      res.end();
       return;
     }
 
@@ -87,6 +96,7 @@ export async function startServer() {
     url: `http://127.0.0.1:${port}`,
     ttsBaseUrl: `http://127.0.0.1:${port}/v1`,
     ttsCalls,
+    pageEvents,
     close: () => new Promise((resolve) => {
       server.closeAllConnections();
       server.close(resolve);

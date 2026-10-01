@@ -15,7 +15,7 @@ const MIN_ZOOM = 1.15;
 // 下一個焦點還在目前鏡頭中央這個比例的範圍內，就不移動（避免一直小幅晃動）
 const KEEP_RATIO = 0.7;
 
-const ZOOMABLE = new Set(['click', 'fill']);
+const ZOOMABLE = new Set(['click', 'dblclick', 'rightClick', 'fill']);
 
 /**
  * 這一步的放大倍率。

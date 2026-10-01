@@ -59,13 +59,18 @@ async function moveToLocator(page, locator, pace) {
 
 // 回傳點擊的元素外框（CSS px）與按下去的時間點——鏡頭運動要知道
 // 「什麼時候、往哪裡」推近。
-async function clickWithCursor(page, locator, pace) {
+// `button`：'left'（預設）或 'right'（右鍵 → 觸發 contextmenu）。
+// `times`：2 ＝ 雙擊（click、click、dblclick 依序觸發，和真人雙擊一樣），第二下的漣漪晚一點出現。
+async function clickWithCursor(page, locator, pace, { button = 'left', times = 1 } = {}) {
   const { x, y, box } = await moveToLocator(page, locator, pace);
   await page.evaluate(([x, y]) => window.__pwClickRipple?.(x, y), [x, y]);
   const at = Date.now();
-  await page.mouse.down();
-  if (pace.clickHold) await page.waitForTimeout(pace.clickHold);
-  await page.mouse.up();
+  for (let n = 1; n <= times; n++) {
+    if (n > 1) await page.waitForTimeout(90);
+    await page.mouse.down({ button, clickCount: n });
+    if (pace.clickHold) await page.waitForTimeout(pace.clickHold);
+    await page.mouse.up({ button, clickCount: n });
+  }
   if (pace.afterClick) await page.waitForTimeout(pace.afterClick);
   return { box, at };
 }
@@ -122,6 +127,8 @@ function renderZoomed(outDir, manifestJson, sourceVideo) {
  *       { type: 'goto',    url, waitUntil, label, narration },
  *       { type: 'fill',    selector|role+name|placeholder, value, zoom, label, narration },
  *       { type: 'click',   selector|role+name|placeholder|text, zoom, label, narration },
+ *       { type: 'dblclick',   （定位同 click）雙擊 },
+ *       { type: 'rightClick', （定位同 click）右鍵，會打開頁面的 contextmenu },
  *       { type: 'waitFor', selector|role+name|placeholder|text, state, timeout, label },
  *       { type: 'wait',    ms, label, narration },
  *     ]
@@ -240,6 +247,12 @@ export async function runScenario(scenario, { dryRun = false } = {}) {
           break;
         case 'click':
           action = await clickWithCursor(page, locate(page, step), pace);
+          break;
+        case 'dblclick':
+          action = await clickWithCursor(page, locate(page, step), pace, { times: 2 });
+          break;
+        case 'rightClick':
+          action = await clickWithCursor(page, locate(page, step), pace, { button: 'right' });
           break;
         case 'waitFor':
           await locate(page, step).waitFor({ state: step.state ?? 'visible', timeout: step.timeout ?? timeout });

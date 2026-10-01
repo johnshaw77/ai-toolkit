@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head><meta charset="utf-8"><title>click 種類</title></head>
+<body>
+  <div id="target" style="width:200px;height:60px;margin:40px;border:1px solid #333">目標</div>
+  <script>
+    // 事件回報給測試伺服器：頁面關了之後測試還讀得到
+    const t = document.getElementById('target');
+    for (const type of ['click', 'dblclick', 'contextmenu']) {
+      t.addEventListener(type, (e) => { fetch('/event?e=' + type + ':' + e.button); });
+    }
+  </script>
+</body>
+</html>
