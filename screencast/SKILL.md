@@ -109,7 +109,14 @@ cd ~/.claude/skills/screencast && npm run doctor
 
    縮放時箭頭**尖端**會對準點擊座標（不是圖片左上角），放多大都點得準。
 
-   **任何一種 type 都可以再加一個 `narration: '一句口白'`。** 有 narration 的步驟會：
+      **準備階段 `setup`（不錄影的前置步驟，最常見是登入）**：scenario 可以寫 `setup: [...]`，步驟格式同上
+   （只支援 `goto`／`fill`／`click`／`waitFor`／`wait`，沒有游標、沒有旁白、不進影片與 manifest）。
+   引擎先在另一個不錄影的環境把它做完，把 **cookie 與 localStorage** 帶進正式錄影，影片就從重點開始，
+   不用每支都重複登入畫面。只有「示範登入」的那一支才把登入寫進 `steps`。
+   準備階段失敗會直接報「準備階段第 N 步『標籤』失敗」並中止，不會開始錄影。dry-run 也會先跑 `setup`。
+   ⚠️ 只能帶走 cookie 與 localStorage（`storageState`）；登入狀態放在 sessionStorage 或記憶體的系統帶不過去。
+
+**任何一種 type 都可以再加一個 `narration: '一句口白'`。** 有 narration 的步驟會：
    合成語音 → 量出實際秒數 → 動作做完後用這個秒數當停留時間（`wait` 型步驟則完全用這個
    秒數取代 `ms`）。步調自然跟著講稿走，不用自己猜要 `wait` 幾毫秒，也不會有畫面跟聲音
    對不齊的問題。錄完會多一支疊好音軌的 `demo-narrated.webm`。

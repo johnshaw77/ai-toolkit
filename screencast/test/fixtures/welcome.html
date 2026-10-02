@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head><meta charset="utf-8"><title>歡迎</title></head>
+<body>
+  <h1 id="msg">載入中</h1>
+  <script>
+    const user = localStorage.getItem('user');
+    const hasCookie = document.cookie.includes('sid=abc123');
+    document.getElementById('msg').textContent = user && hasCookie ? '歡迎 ' + user : '請先登入';
+  </script>
+</body>
+</html>

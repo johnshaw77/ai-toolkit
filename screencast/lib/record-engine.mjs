@@ -83,6 +83,52 @@ async function typeWithCursor(page, locator, text, pace) {
   return action;
 }
 
+const SETUP_TYPES = new Set(['goto', 'fill', 'click', 'waitFor', 'wait']);
+
+/**
+ * 準備階段（scenario.setup）：在「不錄影、沒有游標、不放旁白」的環境把前置步驟做完（最常見的是登入），
+ * 把 cookie 與 localStorage 存下來，正式錄影的環境直接帶著登入後的狀態開始，影片就從重點開始。
+ * 失敗就整個中止（前置條件不成立，後面錄了也沒意義）。
+ */
+async function runSetup(browser, { setup, viewport, baseUrl, timeout, defaultWaitUntil }) {
+  const context = await browser.newContext({ viewport });
+  context.setDefaultTimeout(timeout);
+  const page = await context.newPage();
+  try {
+    for (const [i, step] of setup.entries()) {
+      const label = step.label ?? `${step.type} #${i + 1}`;
+      console.log(`  準備 ${i + 1}/${setup.length}) ${label}`);
+      try {
+        switch (step.type) {
+          case 'goto':
+            await page.goto(/^https?:\/\//.test(step.url) ? step.url : baseUrl + step.url, { waitUntil: step.waitUntil ?? defaultWaitUntil });
+            await page.waitForLoadState('networkidle', { timeout: 2000 }).catch(() => {});
+            break;
+          case 'fill':
+            await locate(page, step).fill(fillValue(step));
+            break;
+          case 'click':
+            await locate(page, step).click();
+            break;
+          case 'waitFor':
+            await locate(page, step).waitFor({ state: step.state ?? 'visible', timeout: step.timeout ?? timeout });
+            break;
+          case 'wait':
+            await page.waitForTimeout(step.ms ?? 800);
+            break;
+          default:
+            throw new Error(`準備階段只支援 ${[...SETUP_TYPES].join('、')}，收到 ${step.type}`);
+        }
+      } catch (err) {
+        throw new Error(`準備階段第 ${i + 1} 步「${label}」失敗：${err.message.split('\n')[0]}`);
+      }
+    }
+    return await context.storageState();
+  } finally {
+    await context.close();
+  }
+}
+
 /**
  * Windows 上 `new URL(..., import.meta.url).pathname` 會得到 /C:/Users/... ，
  * 以前的範例就是這樣寫 outDir 的。這裡把開頭多的斜線拿掉，舊 scenario 照樣能跑。
@@ -123,6 +169,8 @@ function renderZoomed(outDir, manifestJson, sourceVideo) {
  *     cursor: { scale, size, rippleSize, rippleColor }  // 假游標大小，預設放大 1.5 倍
  *     autoZoom: true | { zoom }         // click / fill 自動推近，另輸出 demo-zoomed.mp4
  *     videoScale: 2                     // 錄影像素倍率；有 zoom 時預設 2（放大才不糊）
+ *     setup: [...]                      // 準備階段：不錄影先做完的前置步驟（goto／fill／click／waitFor／wait，最常見是登入），
+ *                                       // 登入後的 cookie 與 localStorage 帶進正式錄影，影片從重點開始
  *     steps: [
  *       { type: 'goto',    url, waitUntil, label, narration },
  *       { type: 'fill',    selector|role+name|placeholder, value, zoom, label, narration },
@@ -201,8 +249,19 @@ export async function runScenario(scenario, { dryRun = false } = {}) {
   const browser = await chromium.launch(
     videoScale > 1 ? { args: [`--force-device-scale-factor=${videoScale}`] } : {},
   );
+  let storageState;
+  if (scenario.setup?.length) {
+    console.log(`準備階段（不錄影）：${scenario.setup.length} 步`);
+    try {
+      storageState = await runSetup(browser, { setup: scenario.setup, viewport, baseUrl, timeout, defaultWaitUntil });
+    } catch (err) {
+      await browser.close();
+      throw err;
+    }
+  }
   const context = await browser.newContext({
     viewport,
+    ...(storageState ? { storageState } : {}),
     ...(videoScale > 1 ? { deviceScaleFactor: videoScale } : {}),
     ...(dryRun ? {} : {
       recordVideo: { dir: outDir, size: { width: viewport.width * videoScale, height: viewport.height * videoScale } },

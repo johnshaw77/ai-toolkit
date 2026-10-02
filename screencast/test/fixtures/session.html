@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head><meta charset="utf-8"><title>登入</title></head>
+<body>
+  <h1>登入頁</h1>
+  <input id="who" placeholder="帳號">
+  <button id="login">登入</button>
+  <script>
+    document.getElementById('login').addEventListener('click', () => {
+      // 登入狀態存在 localStorage（和 cookie 一樣要能被帶進正式錄影）
+      localStorage.setItem('user', document.getElementById('who').value);
+      document.cookie = 'sid=abc123; path=/';
+    });
+  </script>
+</body>
+</html>
