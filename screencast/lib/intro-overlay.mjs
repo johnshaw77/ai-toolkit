@@ -18,8 +18,10 @@ const DEFAULTS = { holdMs: 2600, fadeMs: 900, accent: '#1677ff' };
 /**
  * 驗證 scenario.intro。
  *   logo     logo 圖檔：檔案路徑（png／jpg／svg／webp，相對路徑以執行目錄為準）或 data: 網址；放在最上面
- *   logoHeight logo 的顯示高度（px），預設 56
- *   heading  大標題（最大的字，放在最上面；例如系統名稱）
+ *   logoHeight logo 的顯示高度（px），預設 44
+ *   brand    品牌行：logo 下面的系統名稱（比 title 小）
+ *   badge    醒目的徽章（實心圓角底、白字），例如「第 02 集」，放在 title 上面；讓每一支影片的卡片一眼分得出來
+ *   watermark 淡淡的超大背景字（例如集數「02」），放在卡片右邊，不影響閱讀
  *   title    必填，主旨
  *   kicker   標題上方的小字（例如「操作教學・第 02 支」）
  *   subtitle 標題下方的說明
@@ -43,13 +45,13 @@ function logoDataUrl(logo) {
 export function introOptions(intro) {
   if (intro == null || intro === false) return null;
   if (typeof intro !== 'object') throw new Error('intro 要是物件，例如 { title: "…" }');
-  const { logo = '', logoHeight = 56, heading = '', title, kicker = '', subtitle = '', holdMs = DEFAULTS.holdMs, fadeMs = DEFAULTS.fadeMs, accent = DEFAULTS.accent } = intro;
+  const { logo = '', logoHeight = 44, brand = '', badge = '', watermark = '', title, kicker = '', subtitle = '', holdMs = DEFAULTS.holdMs, fadeMs = DEFAULTS.fadeMs, accent = DEFAULTS.accent } = intro;
   if (typeof title !== 'string' || title.trim() === '') throw new Error('intro.title 必填（影片的主旨）');
   for (const [k, v] of [['holdMs', holdMs], ['fadeMs', fadeMs]]) {
     if (!(Number(v) >= 0) || !Number.isFinite(Number(v))) throw new Error(`intro.${k} 要是 0 以上的數字，收到 ${v}`);
   }
   if (!(Number(logoHeight) > 0)) throw new Error(`intro.logoHeight 要是正數，收到 ${logoHeight}`);
-  return { logo: logoDataUrl(logo), logoHeight: Number(logoHeight), heading: String(heading), title, kicker: String(kicker), subtitle: String(subtitle), holdMs: Number(holdMs), fadeMs: Number(fadeMs), accent: String(accent) };
+  return { logo: logoDataUrl(logo), logoHeight: Number(logoHeight), brand: String(brand), badge: String(badge), watermark: String(watermark), title, kicker: String(kicker), subtitle: String(subtitle), holdMs: Number(holdMs), fadeMs: Number(fadeMs), accent: String(accent) };
 }
 
 export function introInitScript(intro) {
@@ -73,24 +75,37 @@ export function introInitScript(intro) {
     el.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#f4f6f8;display:flex;align-items:center;justify-content:center;opacity:1;pointer-events:none;font-family:"Noto Sans CJK TC","Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;';
     const card = document.createElement('div');
     card.style.cssText = 'max-width:70vw;padding-left:32px;border-left:10px solid ' + O.accent + ';';
-    const part = (text, css) => {
-      if (!text) return;
+    const part = (text, css, parent) => {
+      if (!text) return null;
       const d = document.createElement('div');
       d.textContent = text;
       d.style.cssText = css;
-      card.appendChild(d);
+      (parent || card).appendChild(d);
+      return d;
     };
     if (O.logo) {
       const img = document.createElement('img');
       img.src = O.logo;
-      img.style.cssText = 'display:block;height:' + O.logoHeight + 'px;width:auto;margin-bottom:32px;';
+      img.style.cssText = 'display:block;height:' + O.logoHeight + 'px;width:auto;margin-bottom:22px;';
       card.appendChild(img);
     }
-    // 有大標題時，大標題最大，主旨降一級，視覺上才分得出層次
-    part(O.heading, 'font-size:76px;font-weight:800;letter-spacing:.04em;line-height:1.2;color:#1f2d3d;margin-bottom:44px;');
-    part(O.kicker, 'font-size:26px;letter-spacing:.12em;color:#6b7a90;margin-bottom:16px;');
-    part(O.title, 'font-size:' + (O.heading ? 52 : 64) + 'px;font-weight:700;line-height:1.25;color:' + (O.heading ? O.accent : '#1f2d3d') + ';');
-    part(O.subtitle, 'font-size:28px;line-height:1.6;color:#4a5b70;margin-top:22px;');
+    // 層次：這一支的主旨（title）最大，系統名稱（brand）次之偏小；徽章用實心色塊，是整張卡最醒目的色塊
+    part(O.brand, 'font-size:40px;font-weight:700;letter-spacing:.06em;line-height:1.2;color:#3b4a5e;margin-bottom:52px;');
+    if (O.badge || O.kicker) {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:22px;margin-bottom:22px;';
+      part(O.badge, 'font-size:40px;font-weight:800;letter-spacing:.08em;line-height:1;color:#fff;background:' + O.accent + ';padding:12px 30px;border-radius:999px;', row);
+      part(O.kicker, 'font-size:26px;letter-spacing:.12em;color:#6b7a90;', row);
+      card.appendChild(row);
+    }
+    part(O.title, 'font-size:88px;font-weight:800;line-height:1.2;color:#1f2d3d;');
+    part(O.subtitle, 'font-size:30px;line-height:1.6;color:#4a5b70;margin-top:26px;');
+    if (O.watermark) {
+      const w = document.createElement('div');
+      w.textContent = O.watermark;
+      w.style.cssText = 'position:absolute;right:3vw;bottom:-13vh;font-size:min(62vh,520px);font-weight:900;line-height:1;letter-spacing:-.04em;color:' + O.accent + ';opacity:.08;';
+      el.appendChild(w);
+    }
     el.appendChild(card);
     (document.documentElement || document).appendChild(el);
 

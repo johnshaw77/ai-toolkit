@@ -109,14 +109,14 @@ cd ~/.claude/skills/screencast && npm run doctor
 
    縮放時箭頭**尖端**會對準點擊座標（不是圖片左上角），放多大都點得準。
 
-      **開頭主旨卡 `intro`**：scenario 寫 `intro: { logo, heading, kicker, title, subtitle }`，影片一開始會蓋一張卡片
-   （由上到下：logo、最大的字 `heading`＝大標題（例如系統名稱）、小字章節 `kicker`、這一支的主旨 `title`、說明 `subtitle`；只有 `title` 必填），停留 `holdMs`（預設 2600）後用 `fadeMs`（預設 900）淡出，露出底下已經載入好的頁面。
+      **開頭主旨卡 `intro`**：scenario 寫 `intro: { logo, brand, badge, watermark, kicker, title, subtitle }`，影片一開始會蓋一張卡片
+   （由上到下：logo、品牌行 `brand`（例如系統名稱，字比主旨小）、醒目的實心徽章 `badge`（例如「第 02 集」）加小字 `kicker`、最大的字 `title`＝這一支的主旨、說明 `subtitle`；`watermark` 是右邊淡淡的超大背景字（例如集數「02」），讓每一支的卡片一眼分得出來；只有 `title` 必填），停留 `holdMs`（預設 2600）後用 `fadeMs`（預設 900）淡出，露出底下已經載入好的頁面。
    - 卡片是畫在頁面上的（和假游標同一套做法），**不是接在影片前面的一段**，所以旁白、字幕、鏡頭的時間軸不會被整個推後。
    - 卡片和第一個 `goto` 的頁面載入**同時開始**；`goto` 會等卡片淡出才算做完，後面的步驟（和旁白）才開始。
      載入花掉的時間算在停留裡，所以實際多出來的時間是 `holdMs + fadeMs − 載入時間`。
    - 換頁（例如首頁 redirect 到登入頁）時，新頁面接著用剩下的時間蓋上，不會重來；淡出後之後的頁面都不再出現。
    - dry-run 不顯示、也不等。`title` 必填，寫錯開瀏覽器前就報錯。
-   - `logo` 給檔案路徑（png／jpg／svg／webp）或 `data:` 網址，引擎讀進來嵌進頁面，不依賴被錄的網站；`logoHeight` 調顯示高度（預設 56px）。logo 解析度低放大會糊，盡量給 svg 或夠大的 png。
+   - `logo` 給檔案路徑（png／jpg／svg／webp）或 `data:` 網址，引擎讀進來嵌進頁面，不依賴被錄的網站；`logoHeight` 調顯示高度（預設 44px）。logo 解析度低放大會糊，盡量給 svg 或夠大的 png。
    - 卡片用 `Noto Sans CJK TC`／`PingFang TC`／`Microsoft JhengHei` 等字型；`accent` 可換標題旁色條的顏色。
 
    **準備階段 `setup`（不錄影的前置步驟，最常見是登入）**：scenario 可以寫 `setup: [...]`，步驟格式同上

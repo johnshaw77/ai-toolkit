@@ -26,7 +26,7 @@ test('introOptions：沒寫就是 null；title 必填；時間要是數字；補
   assert.throws(() => introOptions({ title: 'x', holdMs: -1 }), /intro\.holdMs/);
   assert.throws(() => introOptions({ title: 'x', fadeMs: 'abc' }), /intro\.fadeMs/);
   assert.throws(() => introOptions('字串'), /intro 要是物件/);
-  assert.deepEqual(introOptions({ title: '主旨' }), { logo: '', logoHeight: 56, heading: '', title: '主旨', kicker: '', subtitle: '', holdMs: 2600, fadeMs: 900, accent: '#1677ff' });
+  assert.deepEqual(introOptions({ title: '主旨' }), { logo: '', logoHeight: 44, brand: '', badge: '', watermark: '', title: '主旨', kicker: '', subtitle: '', holdMs: 2600, fadeMs: 900, accent: '#1677ff' });
 });
 
 async function withPage(intro, fn) {
@@ -54,22 +54,28 @@ test('introOptions：logo 可以是檔案或 data: 網址，副檔名與檔案�
 });
 
 test('頁面載入就蓋上主旨卡（含章節、標題、說明），停留後淡出並移除，之後換頁不再出現', async () => {
-  await withPage({ logo: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIvPg==', heading: '系統名稱大標題', kicker: '操作教學・第 02 支', title: '搜尋與查出處', subtitle: '一句說明', holdMs: 500, fadeMs: 300 }, async (page) => {
+  await withPage({ logo: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIvPg==', brand: '系統名稱品牌行', badge: '第 02 集', watermark: '02', kicker: '操作教學・第 02 支', title: '搜尋與查出處', subtitle: '一句說明', holdMs: 500, fadeMs: 300 }, async (page) => {
     await page.goto(`${server.url}/index.html`);
     const first = await state(page);
     assert.equal(first.el, true, '載入時卡片就在');
     assert.match(first.s, /^shown:/);
     const text = await page.locator('#__pw_intro').innerText();
-    assert.match(text, /系統名稱大標題/);
+    assert.match(text, /系統名稱品牌行/);
+    assert.match(text, /第 02 集/);
     assert.match(text, /操作教學・第 02 支/);
-    // 大標題在最上面，且字最大
-    const sizes = await page.evaluate(() => [...document.querySelectorAll('#__pw_intro div > div')].map((d) => [d.textContent, parseFloat(getComputedStyle(d).fontSize)]));
-    assert.equal(await page.locator('#__pw_intro img').count(), 1, 'logo 在卡片上');
-    assert.equal(await page.evaluate(() => document.querySelector('#__pw_intro div').firstElementChild.tagName), 'IMG', 'logo 在最上面');
-    assert.equal(sizes[0][0], '系統名稱大標題');
-    assert.equal(Math.max(...sizes.map((x) => x[1])), sizes[0][1], '大標題是最大的字');
     assert.match(text, /搜尋與查出處/);
     assert.match(text, /一句說明/);
+    assert.equal(await page.locator('#__pw_intro img').count(), 1, 'logo 在卡片上');
+    assert.equal(await page.evaluate(() => document.querySelector('#__pw_intro > div:last-child').firstElementChild.tagName), 'IMG', 'logo 在卡片最上面');
+    // 字級層次：這一支的主旨（title）最大，系統名稱（brand）比它小；徽章是實心色塊；背景大數字不影響閱讀（很淡）
+    const size = (t) => page.evaluate((x) => {
+      const el = [...document.querySelectorAll('#__pw_intro *')].find((e) => e.children.length === 0 && e.textContent === x);
+      return { px: parseFloat(getComputedStyle(el).fontSize), bg: getComputedStyle(el).backgroundColor, opacity: getComputedStyle(el).opacity };
+    }, t);
+    const [title, brand, badge, mark] = await Promise.all([size('搜尋與查出處'), size('系統名稱品牌行'), size('第 02 集'), size('02')]);
+    assert.ok(title.px > brand.px * 1.8, `主旨（${title.px}px）要明顯大於系統名稱（${brand.px}px）`);
+    assert.notEqual(badge.bg, 'rgba(0, 0, 0, 0)', '徽章有實心底色');
+    assert.ok(Number(mark.opacity) <= 0.15 && mark.px > 200, `背景大數字又大又淡（${mark.px}px，不透明度 ${mark.opacity}）`);
 
     await page.waitForFunction(() => sessionStorage.getItem('__pw_intro') === 'done', null, { timeout: 5000 });
     assert.equal((await state(page)).el, false, '淡出後移除');
