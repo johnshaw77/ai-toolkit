@@ -26,7 +26,7 @@ test('introOptions：沒寫就是 null；title 必填；時間要是數字；補
   assert.throws(() => introOptions({ title: 'x', holdMs: -1 }), /intro\.holdMs/);
   assert.throws(() => introOptions({ title: 'x', fadeMs: 'abc' }), /intro\.fadeMs/);
   assert.throws(() => introOptions('字串'), /intro 要是物件/);
-  assert.deepEqual(introOptions({ title: '主旨' }), { title: '主旨', kicker: '', subtitle: '', holdMs: 2600, fadeMs: 900, accent: '#1677ff' });
+  assert.deepEqual(introOptions({ title: '主旨' }), { logo: '', logoHeight: 56, heading: '', title: '主旨', kicker: '', subtitle: '', holdMs: 2600, fadeMs: 900, accent: '#1677ff' });
 });
 
 async function withPage(intro, fn) {
@@ -42,14 +42,32 @@ async function withPage(intro, fn) {
 
 const state = (page) => page.evaluate(() => ({ el: Boolean(document.getElementById('__pw_intro')), s: sessionStorage.getItem('__pw_intro') }));
 
+test('introOptions：logo 可以是檔案或 data: 網址，副檔名與檔案都要對', () => {
+  const png = path.join(tmp, 'logo.png');
+  fs.writeFileSync(png, Buffer.from('iVBORw0KGgo=', 'base64'));
+  assert.match(introOptions({ title: 'x', logo: png }).logo, /^data:image\/png;base64,/);
+  assert.equal(introOptions({ title: 'x', logo: 'data:image/svg+xml;base64,AAA' }).logo, 'data:image/svg+xml;base64,AAA');
+  assert.throws(() => introOptions({ title: 'x', logo: path.join(tmp, '沒有.png') }), /找不到檔案/);
+  assert.throws(() => introOptions({ title: 'x', logo: path.join(tmp, 'logo.gif') }), /只支援/);
+  assert.throws(() => introOptions({ title: 'x', logo: 5 }), /檔案路徑或 data/);
+  assert.throws(() => introOptions({ title: 'x', logoHeight: 0 }), /logoHeight/);
+});
+
 test('頁面載入就蓋上主旨卡（含章節、標題、說明），停留後淡出並移除，之後換頁不再出現', async () => {
-  await withPage({ kicker: '操作教學・第 02 支', title: '搜尋與查出處', subtitle: '一句說明', holdMs: 500, fadeMs: 300 }, async (page) => {
+  await withPage({ logo: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIvPg==', heading: '系統名稱大標題', kicker: '操作教學・第 02 支', title: '搜尋與查出處', subtitle: '一句說明', holdMs: 500, fadeMs: 300 }, async (page) => {
     await page.goto(`${server.url}/index.html`);
     const first = await state(page);
     assert.equal(first.el, true, '載入時卡片就在');
     assert.match(first.s, /^shown:/);
     const text = await page.locator('#__pw_intro').innerText();
+    assert.match(text, /系統名稱大標題/);
     assert.match(text, /操作教學・第 02 支/);
+    // 大標題在最上面，且字最大
+    const sizes = await page.evaluate(() => [...document.querySelectorAll('#__pw_intro div > div')].map((d) => [d.textContent, parseFloat(getComputedStyle(d).fontSize)]));
+    assert.equal(await page.locator('#__pw_intro img').count(), 1, 'logo 在卡片上');
+    assert.equal(await page.evaluate(() => document.querySelector('#__pw_intro div').firstElementChild.tagName), 'IMG', 'logo 在最上面');
+    assert.equal(sizes[0][0], '系統名稱大標題');
+    assert.equal(Math.max(...sizes.map((x) => x[1])), sizes[0][1], '大標題是最大的字');
     assert.match(text, /搜尋與查出處/);
     assert.match(text, /一句說明/);
 
