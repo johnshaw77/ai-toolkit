@@ -109,7 +109,16 @@ cd ~/.claude/skills/screencast && npm run doctor
 
    縮放時箭頭**尖端**會對準點擊座標（不是圖片左上角），放多大都點得準。
 
-      **準備階段 `setup`（不錄影的前置步驟，最常見是登入）**：scenario 可以寫 `setup: [...]`，步驟格式同上
+      **開頭主旨卡 `intro`**：scenario 寫 `intro: { kicker, title, subtitle }`，影片一開始會蓋一張卡片
+   （小字章節、大字主旨、說明），停留 `holdMs`（預設 2600）後用 `fadeMs`（預設 900）淡出，露出底下已經載入好的頁面。
+   - 卡片是畫在頁面上的（和假游標同一套做法），**不是接在影片前面的一段**，所以旁白、字幕、鏡頭的時間軸不會被整個推後。
+   - 卡片和第一個 `goto` 的頁面載入**同時開始**；`goto` 會等卡片淡出才算做完，後面的步驟（和旁白）才開始。
+     載入花掉的時間算在停留裡，所以實際多出來的時間是 `holdMs + fadeMs − 載入時間`。
+   - 換頁（例如首頁 redirect 到登入頁）時，新頁面接著用剩下的時間蓋上，不會重來；淡出後之後的頁面都不再出現。
+   - dry-run 不顯示、也不等。`title` 必填，寫錯開瀏覽器前就報錯。
+   - 卡片用 `Noto Sans CJK TC`／`PingFang TC`／`Microsoft JhengHei` 等字型；`accent` 可換標題旁色條的顏色。
+
+   **準備階段 `setup`（不錄影的前置步驟，最常見是登入）**：scenario 可以寫 `setup: [...]`，步驟格式同上
    （只支援 `goto`／`fill`／`click`／`waitFor`／`wait`，沒有游標、沒有旁白、不進影片與 manifest）。
    引擎先在另一個不錄影的環境把它做完，把 **cookie 與 localStorage** 帶進正式錄影，影片就從重點開始，
    不用每支都重複登入畫面。只有「示範登入」的那一支才把登入寫進 `steps`。

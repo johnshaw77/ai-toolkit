@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { explicitRelease, planCamera, releaseOnWait, renderCamera, resolveZoom, scenarioUsesZoom } from './camera.mjs';
 import { cursorInitScript } from './cursor-overlay.mjs';
+import { introDone, introInitScript, introOptions } from './intro-overlay.mjs';
 import { encodeMp4 } from './encode.mjs';
 import { fillValue, locate } from './locate.mjs';
 import { synthesizeNarration, muxNarration } from './narration.mjs';
@@ -169,6 +170,7 @@ function renderZoomed(outDir, manifestJson, sourceVideo) {
  *     cursor: { scale, size, rippleSize, rippleColor }  // 假游標大小，預設放大 1.5 倍
  *     autoZoom: true | { zoom }         // click / fill 自動推近，另輸出 demo-zoomed.mp4
  *     videoScale: 2                     // 錄影像素倍率；有 zoom 時預設 2（放大才不糊）
+ *     intro: { title, kicker, subtitle, holdMs, fadeMs }  // 可省略。影片開頭的主旨卡，停留後淡出（第一個 goto 會等它淡出）
  *     setup: [...]                      // 準備階段：不錄影先做完的前置步驟（goto／fill／click／waitFor／wait，最常見是登入），
  *                                       // 登入後的 cookie 與 localStorage 帶進正式錄影，影片從重點開始
  *     steps: [
@@ -218,6 +220,7 @@ export async function runScenario(scenario, { dryRun = false } = {}) {
   scenario = { ...scenario, outDir: normalizeOutDir(scenario.outDir) };
   // 先組好游標 script：設定寫錯要在刪 outDir、開瀏覽器之前就報錯。
   const cursorScript = cursorInitScript(cursorOpts);
+  const intro = introOptions(scenario.intro); // 寫錯也在這裡就報錯
   const usesZoom = scenarioUsesZoom(scenario); // zoom 寫錯也在這裡就報錯
   const videoScale = dryRun ? 1 : (scenario.videoScale ?? (usesZoom ? 2 : 1));
   const outDir = dryRun
@@ -269,6 +272,10 @@ export async function runScenario(scenario, { dryRun = false } = {}) {
   });
   context.setDefaultTimeout(timeout);
   await context.addInitScript(cursorScript);
+  // 開頭主旨卡：dry-run 不需要（不錄影、也不想白等）
+  const introActive = Boolean(intro) && !dryRun;
+  if (introActive) await context.addInitScript(introInitScript(intro));
+  let introPending = introActive;
   const page = await context.newPage();
   page.on('pageerror', (err) => console.log('  [pageerror]', err.message));
 
@@ -298,6 +305,11 @@ export async function runScenario(scenario, { dryRun = false } = {}) {
           // networkidle 會一路卡到逾時。
           if (waitUntil !== 'networkidle') {
             await page.waitForLoadState('networkidle', { timeout: 2000 }).catch(() => {});
+          }
+          // 第一個 goto：主旨卡跟著頁面一起載入，等它淡出才算這一步做完，後面的步驟（與旁白）才開始
+          if (introPending) {
+            introPending = false;
+            await page.waitForFunction(introDone, null, { timeout: intro.holdMs + intro.fadeMs + 5000 });
           }
           await moveTo(page, { x: viewport.width / 2, y: viewport.height / 2 }, pace);
           break;
