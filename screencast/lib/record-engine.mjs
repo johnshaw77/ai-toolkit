@@ -5,6 +5,7 @@ import path from 'node:path';
 import { explicitRelease, planCamera, releaseOnWait, renderCamera, resolveZoom, scenarioUsesZoom } from './camera.mjs';
 import { cursorInitScript } from './cursor-overlay.mjs';
 import { introDone, introInitScript, introOptions } from './intro-overlay.mjs';
+import { pressWithLabel, scrollWithCursor, uploadFiles, uploadWithCursor, validateActionSteps } from './actions.mjs';
 import { encodeMp4 } from './encode.mjs';
 import { fillValue, locate } from './locate.mjs';
 import { synthesizeNarration, muxNarration } from './narration.mjs';
@@ -13,10 +14,12 @@ import { cuesFromManifest, writeSubtitles } from './subtitles.mjs';
 // 錄影時的節奏：游標平滑移動、點擊有停頓、打字有速度感，觀眾才看得清楚。
 const RECORD_PACE = {
   moveSteps: 30, afterMove: 220, clickHold: 90, afterClick: 500, typeDelay: 55, afterType: 300,
+  beforeKey: 250, afterKey: 800, scrollMs: 1, afterScroll: 400,
 };
 // dry-run 只是確認 selector 都對得到，不需要給人看，全部壓到最短。
 const DRY_RUN_PACE = {
   moveSteps: 1, afterMove: 0, clickHold: 0, afterClick: 0, typeDelay: 0, afterType: 0,
+  beforeKey: 0, afterKey: 0, scrollMs: 0, afterScroll: 0,
 };
 
 // outDir 裡放這個檔，下次才敢整個刪掉重建——避免 outDir 不小心指到專案根目錄
@@ -179,6 +182,10 @@ function renderZoomed(outDir, manifestJson, sourceVideo) {
  *       { type: 'click',   selector|role+name|placeholder|text, zoom, label, narration },
  *       { type: 'dblclick',   （定位同 click）雙擊 },
  *       { type: 'rightClick', （定位同 click）右鍵，會打開頁面的 contextmenu },
+ *       { type: 'upload',  （定位同 click：上傳按鈕或 <input type=file>）, files: '路徑'|['路徑'], label },
+ *         // 游標點下去、檔案選擇器一開就帶入檔案；路徑相對於 scenario 檔
+ *       { type: 'press',   key: 'Enter'|'Control+Minus'…, label },  // 送出按鍵，游標旁短暫顯示按了什麼；不能 zoom
+ *       { type: 'scroll',  [selector 要捲的容器，沒寫＝整個頁面], to: 元素定位|by: 像素, label },  // 平滑捲動；鏡頭維持不動
  *       { type: 'waitFor', selector|role+name|placeholder|text, state, timeout, zoom, label },
  *         // autoZoom 開著時，等了才出現的 waitFor 會自動把鏡頭拉回全畫面；zoom:false 強制拉回，zoom:倍率 對準那個元素
  *       { type: 'wait',    ms, label, narration },
@@ -202,7 +209,7 @@ function renderZoomed(outDir, manifestJson, sourceVideo) {
  * 回傳 { ok, videoPath, narratedVideoPath, mp4Path, zoomedPath, manifestPath, manifest, srtPath, vttPath, outDir }。
  * manifest 記錄每個 step 相對影片開頭的起訖時間（毫秒），以及旁白自己的起點與長度。
  */
-export async function runScenario(scenario, { dryRun = false } = {}) {
+export async function runScenario(scenario, { dryRun = false, baseDir = process.cwd() } = {}) {
   const {
     baseUrl = '',
     viewport = { width: 1440, height: 900 },
@@ -222,6 +229,7 @@ export async function runScenario(scenario, { dryRun = false } = {}) {
   const cursorScript = cursorInitScript(cursorOpts);
   const intro = introOptions(scenario.intro); // 寫錯也在這裡就報錯
   const usesZoom = scenarioUsesZoom(scenario); // zoom 寫錯也在這裡就報錯
+  validateActionSteps(steps, baseDir); // upload 的檔案不存在、press 沒寫 key、scroll 沒寫目標，也在開瀏覽器之前報錯
   const videoScale = dryRun ? 1 : (scenario.videoScale ?? (usesZoom ? 2 : 1));
   const outDir = dryRun
     ? path.join(os.tmpdir(), `screencast-dry-run-${path.basename(scenario.outDir)}`)
@@ -325,6 +333,15 @@ export async function runScenario(scenario, { dryRun = false } = {}) {
           break;
         case 'rightClick':
           action = await clickWithCursor(page, locate(page, step), pace, { button: 'right' });
+          break;
+        case 'upload':
+          action = await uploadWithCursor(page, step, uploadFiles(step, baseDir), pace, { timeout, clickWithCursor });
+          break;
+        case 'press':
+          await pressWithLabel(page, step, pace);
+          break;
+        case 'scroll':
+          await scrollWithCursor(page, step, pace, moveTo);
           break;
         case 'waitFor': {
           const locator = locate(page, step);

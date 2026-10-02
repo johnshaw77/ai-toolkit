@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head><meta charset="utf-8"><title>upload / press / scroll</title></head>
+<body>
+  <button id="pick" type="button" onclick="document.getElementById('hidden').click()">選擇檔案</button>
+  <input id="hidden" type="file" multiple style="display:none">
+  <input id="plain" type="file" style="display:block;margin:8px 0">
+  <input id="typing" placeholder="輸入框">
+  <div id="box" style="height:150px;width:320px;overflow:auto;border:1px solid #333">
+    <div style="height:1000px">容器開頭</div>
+    <p id="in-box">容器裡的目標</p>
+    <div style="height:600px"></div>
+  </div>
+  <div style="height:1800px">長頁面</div>
+  <p id="bottom">頁尾</p>
+  <script>
+    // 事件回報給測試伺服器（頁面關了之後測試還讀得到）
+    const report = (e) => fetch('/event?e=' + encodeURIComponent(e));
+    for (const id of ['hidden', 'plain']) {
+      document.getElementById(id).addEventListener('change', (ev) => {
+        report('file:' + id + ':' + [...ev.target.files].map((f) => f.name).join('+'));
+      });
+    }
+    document.addEventListener('keydown', (e) => {
+      report('key:' + [e.ctrlKey ? 'Control' : '', e.key].filter(Boolean).join('+'));
+    });
+    // 捲動結束（停 200 毫秒）才回報最後的位置
+    function onScrollEnd(target, name, read) {
+      let t;
+      target.addEventListener('scroll', () => { clearTimeout(t); t = setTimeout(() => report(name + ':' + Math.round(read())), 200); });
+    }
+    onScrollEnd(window, 'page-scroll', () => window.scrollY);
+    onScrollEnd(document.getElementById('box'), 'box-scroll', () => document.getElementById('box').scrollTop);
+  </script>
+</body>
+</html>

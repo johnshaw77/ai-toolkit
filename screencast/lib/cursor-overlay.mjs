@@ -61,7 +61,11 @@ export function cursorInitScript(options) {
     ripple.id = '__pw_fake_ripple';
     cursor.style.cssText = 'position:fixed;top:0;left:0;width:' + O.size + 'px;height:' + O.size + 'px;pointer-events:none;z-index:2147483647;transform:translate(-4000px,-4000px);';
     const POS_KEY = '__pw_fake_cursor_pos';
+    let lastX = -4000;
+    let lastY = -4000;
     function place(x, y) {
+      lastX = x;
+      lastY = y;
       cursor.style.transform = 'translate(' + (x - O.tipX) + 'px,' + (y - O.tipY) + 'px)';
     }
     try {
@@ -73,11 +77,21 @@ export function cursorInitScript(options) {
     const half = O.rippleSize / 2;
     ripple.style.cssText = 'position:fixed;top:0;left:0;width:' + O.rippleSize + 'px;height:' + O.rippleSize + 'px;margin-left:-' + half + 'px;margin-top:-' + half + 'px;border-radius:50%;background:' + O.rippleColor + ';pointer-events:none;z-index:2147483646;opacity:0;';
 
+    // 按鍵標籤（press 步驟）：游標旁邊短暫顯示按了什麼鍵，觀眾才知道有這個快速鍵
+    const keyLabel = document.createElement('div');
+    keyLabel.id = '__pw_key_label';
+    keyLabel.style.cssText = 'position:fixed;top:0;left:0;pointer-events:none;z-index:2147483647;opacity:0;transition:opacity 150ms;' +
+      'padding:' + Math.round(O.size * 0.25) + 'px ' + Math.round(O.size * 0.5) + 'px;border-radius:' + Math.round(O.size * 0.3) + 'px;' +
+      'background:rgba(17,17,17,0.88);color:#fff;font:600 ' + Math.round(O.size * 0.75) + 'px/1.2 system-ui,sans-serif;white-space:nowrap;' +
+      'box-shadow:0 2px 8px rgba(0,0,0,0.35);';
+    let keyTimer;
+
     function mount() {
       const root = document.documentElement;
       root.appendChild(style);
       root.appendChild(cursor);
       root.appendChild(ripple);
+      root.appendChild(keyLabel);
     }
     if (document.body) mount();
     else document.addEventListener('DOMContentLoaded', mount, { once: true });
@@ -90,6 +104,17 @@ export function cursorInitScript(options) {
         // 同上
       }
     }, true);
+
+    window.__pwKeyLabel = (text, holdMs = 1100) => {
+      // 標籤放在游標右下方；太靠近畫面邊緣時往內縮，避免被切掉
+      const x = Math.min(Math.max(lastX, 0) + O.size, window.innerWidth - 200);
+      const y = Math.min(Math.max(lastY, 0) + O.size * 0.8, window.innerHeight - 60);
+      keyLabel.textContent = text;
+      keyLabel.style.transform = 'translate(' + x + 'px,' + y + 'px)';
+      keyLabel.style.opacity = '1';
+      clearTimeout(keyTimer);
+      keyTimer = setTimeout(() => { keyLabel.style.opacity = '0'; }, holdMs);
+    };
 
     window.__pwClickRipple = (x, y) => {
       ripple.style.left = x + 'px';

@@ -16,5 +16,5 @@ if (!scenarioArg) {
 }
 
 const mod = await import(pathToFileURL(path.resolve(scenarioArg)).href);
-const result = zoomOnly ? await rezoomScenario(mod.scenario) : await runScenario(mod.scenario, { dryRun });
+const result = zoomOnly ? await rezoomScenario(mod.scenario) : await runScenario(mod.scenario, { dryRun, baseDir: path.dirname(path.resolve(scenarioArg)) });
 process.exit(result.ok ? 0 : 1);

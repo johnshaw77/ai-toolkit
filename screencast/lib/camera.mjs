@@ -1,4 +1,7 @@
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 // 鏡頭運動（zoom／pan）：錄完之後依 manifest 裡每一步的點擊位置與時間，
 // 用 ffmpeg 把畫面推近、平移、拉遠，輸出另一支影片。錄影本身不受影響。
@@ -15,7 +18,7 @@ const MIN_ZOOM = 1.15;
 // 下一個焦點還在目前鏡頭中央這個比例的範圍內，就不移動（避免一直小幅晃動）
 const KEEP_RATIO = 0.7;
 
-const ZOOMABLE = new Set(['click', 'dblclick', 'rightClick', 'fill']);
+const ZOOMABLE = new Set(['click', 'dblclick', 'rightClick', 'fill', 'upload']);
 // waitFor 也可以指定倍率（鏡頭對準等到的那個元素，例如搜尋結果區）；wait / goto 只能用 zoom:false 拉回
 const FOCUS_ON = new Set([...ZOOMABLE, 'waitFor']);
 const RELEASE_ONLY = new Set(['wait', 'waitFor']);
@@ -29,7 +32,7 @@ const RELEASE_MIN_GAP_MS = 1500;
  *   step.zoom 是數字    → 用這個倍率
  *   step.zoom === true  → 用預設倍率
  *   沒寫                → scenario.autoZoom 開著就用預設倍率，否則不放大
- * 會放大的 type：click / dblclick / rightClick / fill；waitFor 只有明確寫了倍率才放大
+ * 會放大的 type：click / dblclick / rightClick / fill / upload；waitFor 只有明確寫了倍率才放大
  * （不吃 autoZoom）。其他回傳 null（由 planCamera 決定維持或拉回）。
  */
 export function resolveZoom(step, { autoZoom = false } = {}) {
@@ -43,6 +46,9 @@ export function resolveZoom(step, { autoZoom = false } = {}) {
   }
   if (step.type === 'wait' && step.zoom != null && step.zoom !== false) {
     throw new Error(`step "${step.label ?? step.type}"：wait 沒有對象可以放大，只能寫 zoom: false（拉回全畫面）`);
+  }
+  if ((step.type === 'press' || step.type === 'scroll') && step.zoom != null) {
+    throw new Error(`step "${step.label ?? step.type}"：${step.type} 沒有對象可以放大，不能寫 zoom（鏡頭維持目前的樣子）`);
   }
   if (!ZOOMABLE.has(step.type)) return null;
   const auto = typeof autoZoom === 'object' && autoZoom !== null ? true : Boolean(autoZoom);
@@ -117,7 +123,7 @@ function insideCore(focus, rect) {
  *   所以會跟游標一起移動，而不是點完才追過去。
  * - click / fill 沒有 zoom：拉回全畫面。
  * - goto：拉回全畫面（換頁了，舊的焦點沒有意義）。
- * - wait / waitFor / 失敗的步驟：維持目前的鏡頭，例外：
+ * - wait / waitFor / press / scroll / 失敗的步驟：維持目前的鏡頭，例外：
  *   · waitFor 寫了 zoom: 倍率 → 鏡頭對準等到的元素
  *   · waitFor 寫了 zoom: false，或 releaseOnWait 開著、鏡頭還停在舊目標且下一個推近動作不是馬上到 → 拉回全畫面
  *   · wait 寫了 zoom: false → 拉回全畫面
@@ -265,18 +271,27 @@ export function buildCameraFilter(kfs, { scale = 1, fps = 25, output }) {
  */
 export function renderCamera(inputPath, outPath, kfs, { scale = 1, fps = 25, output }) {
   const filter = buildCameraFilter(kfs, { scale, fps, output });
-  execFileSync('ffmpeg', [
-    '-y',
-    '-i', inputPath,
-    '-vf', filter,
-    '-c:v', 'libx264',
-    '-preset', 'veryfast',
-    '-crf', '18',
-    '-pix_fmt', 'yuv420p',
-    '-c:a', 'aac',
-    '-b:a', '128k',
-    '-movflags', '+faststart',
-    outPath,
-  ], { stdio: ['ignore', 'ignore', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
+  // 步驟多的影片，濾鏡運算式會長到超過作業系統的單一參數上限（E2BIG），
+  // 所以寫進暫存檔，用 -filter_script:v 讀，不放在命令列上。
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'screencast-filter-'));
+  const scriptPath = path.join(dir, 'camera.ffscript');
+  fs.writeFileSync(scriptPath, filter);
+  try {
+    execFileSync('ffmpeg', [
+      '-y',
+      '-i', inputPath,
+      '-filter_script:v', scriptPath,
+      '-c:v', 'libx264',
+      '-preset', 'veryfast',
+      '-crf', '18',
+      '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac',
+      '-b:a', '128k',
+      '-movflags', '+faststart',
+      outPath,
+    ], { stdio: ['ignore', 'ignore', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
   return outPath;
 }

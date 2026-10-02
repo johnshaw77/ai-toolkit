@@ -47,6 +47,9 @@ cd ~/.claude/skills/screencast && npm run doctor
    | `goto` | `url`, `waitUntil`, `label` | 導覽；`url` 可以是完整網址，也可以是相對路徑（接在 `scenario.baseUrl` 後面） |
    | `dblclick` | （定位同 `click`）, `label` | 雙擊：依序觸發 click、click、dblclick，和真人一樣；例如雙擊分頁標題 |
    | `rightClick` | （定位同 `click`）, `label` | 右鍵：觸發 contextmenu，用來打開自訂的右鍵選單 |
+   | `upload` | （定位同 `click`：上傳按鈕或 `<input type=file>`）, `files`, `label` | 游標點下去、檔案選擇器一開就帶入檔案；`files` 是路徑或陣列，**相對於 scenario 檔**；檔案不存在在開瀏覽器前就報錯。看不見的 `<input type=file>` 沒東西可點，會直接帶入——影片要有點擊動作就指向畫面上的按鈕 |
+   | `press` | `key`, `label` | 送出按鍵（`Enter`、`Control+Minus`…，Playwright 的寫法）；游標旁短暫顯示「按了什麼鍵」讓觀眾知道有這個快速鍵。不能寫 `zoom` |
+   | `scroll` | `to`\|`by`, `selector`（要捲的容器，沒寫＝整個頁面）, `label` | 游標移到容器中央、平滑捲動。`to` 是要捲到的元素（CSS selector 字串，或 `{ role, name }`／`{ text }` 等定位物件，捲到它落在容器中央）；`by` 是像素（正數往下）。擇一。不能寫 `zoom`，鏡頭維持目前的樣子 |
    | `fill` | `selector`\|`role`+`name`\|`placeholder`, `value`, `label` | 定位輸入框後清空、打字（有打字動畫） |
    | `click` | `selector`\|`role`+`name`\|`placeholder`\|`text`, `label` | 移動游標（平滑、非瞬移）→ 漣漪 → 點擊 |
    | `waitFor` | `selector`\|`role`+`name`\|`placeholder`\|`text`, `state`, `timeout`, `label` | 等某個元素出現（`state` 預設 `visible`，也可以 `hidden`／`attached`／`detached`） |
@@ -81,7 +84,7 @@ cd ~/.claude/skills/screencast && npm run doctor
    ]
    ```
 
-   - 只有 `click`／`dblclick`／`rightClick`／`fill` 會推近；`goto` 拉回全畫面。
+   - 只有 `click`／`dblclick`／`rightClick`／`fill`／`upload` 會推近；`goto` 拉回全畫面；`press`／`scroll` 沒有對象，維持目前鏡頭（寫 `zoom` 會報錯）。
    - **`waitFor` 等到內容出現時，鏡頭自動拉回全畫面**（`autoZoom` 開著就預設開）：觀眾這時要看的是結果，
      不是剛按下去的按鈕。例如「輸入框推近 → 按搜尋 → `waitFor` 結果」，結果出來就是全畫面。
      例外：鏡頭已經是全畫面就不動；下一個推近動作小於 1.5 秒內就到，也不拉（拉回再推近只會來回晃）。
