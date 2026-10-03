@@ -1,0 +1,6 @@
+{
+  "name": "battery",
+  "version": "0.1.0",
+  "description": "輸入框上方的電池 HUD：context、5 小時與 7 天額度各一顆，工作中顯示充電動畫；/battery 開關",
+  "types": "./types/index.d.ts"
+}
