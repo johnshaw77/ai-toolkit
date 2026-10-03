@@ -1,0 +1,5 @@
+{
+  "name": "context-trim",
+  "version": "0.1.0",
+  "description": "Bash 長輸出進 context 前先修剪（保留頭尾與錯誤行），compact 時附上固定的保留清單"
+}

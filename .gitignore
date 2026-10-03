@@ -1,0 +1,8 @@
+# 引擎載入 mod 時自動產生的型別（每個約 1 MB），換電腦會重新產生
+*/.claude-plugin/types/
+*/tsconfig.json
+
+# 魯夫 sprite 有版權，只能自己用，不進版控；換電腦要手動複製
+office/hooks/luffy.ts
+
+.DS_Store
