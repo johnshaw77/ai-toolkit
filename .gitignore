@@ -5,3 +5,6 @@
 out/
 
 # 各子專案另有自己的 .gitignore（node_modules、.venv、快取等）
+
+/brag-*
+unattended-workflow/brag-output*/
