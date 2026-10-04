@@ -1,6 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
+import { toggled } from './toggle'
 import { H, hasArrived, labelOf, LANES, render, TOKEN_COLORS, toCells } from './scene'
 import type { Block } from './scene'
 
@@ -21,6 +22,7 @@ export const register: Register = on => {
   let isWorking = false
   let isFailing = false
   let width = 120 // 上次畫的寬度；方塊到不到得了檔案要看它
+  let isOn = true
 
   const spawn = () => {
     if (blocks.length >= MAX_BLOCKS) return
@@ -35,6 +37,8 @@ export const register: Register = on => {
 
   on('session.start', async ($, e, next) => {
     now = await $.clock.now()
+    isOn = (await $.store.get('isOn')) !== false
+    await $.command.register({ name: 'conveyor', description: '開關推車搬運動畫：/conveyor on｜off，不給就切換' })
     $.clock.every(FRAME_MS, () => {
       if (!isWorking && blocks.length === 0) return
       void $.clock.now().then(ms => {
@@ -46,6 +50,14 @@ export const register: Register = on => {
       })
     })
     return next(e)
+  })
+
+  on('command.run', { command: 'conveyor' }, async ($, e) => {
+    const next = toggled(isOn, e.args)
+    if (next === undefined) return { text: '用法：/conveyor on｜off（不給就切換）' }
+    isOn = next
+    await $.store.set('isOn', isOn)
+    return { text: `推車動畫：${isOn ? '開' : '關'}` }
   })
 
   on('turn.start', async ($, e, next) => {
@@ -88,7 +100,7 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.props.hasSurvey || !e.props.isWorking) return next(e)
+    if (e.props.hasSurvey || !isOn || !e.props.isWorking) return next(e)
     const ui = $.ui.resolve(e)
     if (e.surface !== 'terminal' || !('Raster' in ui)) return next(e)
 
