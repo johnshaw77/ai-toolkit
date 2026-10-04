@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { fallback, parseProbe, PROBE } from './badge'
+import { fallback, parseLabel, parseProbe, PROBE, withLabel } from './badge'
 
 const badge = atom({ plugin: 'host-badge', key: 'badge' } as const, null)
 
@@ -20,7 +20,21 @@ export const register: Register = on => {
     await update($, badge, () => b)
     $.ui.toast(`目前在 ${b.label}`)
     $.ui.status(`⬢ ${b.label}`)
+    await $.command.register({ name: 'badge', description: '改機器名稱色塊：/badge <名稱>，不給就顯示目前名稱' })
     return next(e)
+  })
+
+  on('command.run', { command: 'badge' }, async ($, e) => {
+    const label = parseLabel(e.args)
+    const now = await read($, badge)
+    if (!label) return { text: `目前是 ${now?.label ?? '（未載入）'}。用法：/badge <名稱>` }
+
+    const path = `${await $.env.get('HOME')}/.claude/host-badge.json`
+    const old = await $.fs.read(path).catch(() => '')
+    await $.fs.write(path, withLabel(old, label))
+    await update($, badge, b => ({ label, color: b?.color ?? fallback('').color }))
+    $.ui.status(`⬢ ${label}`)
+    return { text: `色塊名稱改成 ${label}（已寫入 ${path}）` }
   })
 
   // 放在最上面一行；疊加寫法，下層 mod 的畫面接在下面

@@ -28,3 +28,16 @@ export const parseProbe = (stdout: string): Badge => {
     return fb
   }
 }
+
+/** /badge 的新名稱：去頭尾空白，空字串表示沒給 */
+export const parseLabel = (args: string): string => args.trim()
+
+/** 把新名稱寫進設定檔內容；其他欄位（color）照舊，原本壞掉或沒有就從空物件開始 */
+export const withLabel = (configText: string, label: string): string => {
+  let j: Record<string, unknown> = {}
+  try {
+    const parsed: unknown = JSON.parse(configText)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) j = parsed as Record<string, unknown>
+  } catch {}
+  return JSON.stringify({ ...j, label }) + '\n'
+}

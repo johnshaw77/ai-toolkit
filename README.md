@@ -6,7 +6,7 @@
 | 2 | `model-router` | 依 prompt 自動選模型與 effort，子 agent 依類型挑模型；`!opus`／`!sonnet`／`!haiku` 強制指定，`/router` 開關 |
 | 3 | `office` | `/office` 像素辦公室、`/sea` 海上冒險 pane，跟著 Claude 的工作狀態變化 |
 | 4 | `conveyor` | Claude 工作時的搬運動畫：黃昏城市裡，token 方塊流進正在處理的檔案，機器人小搬推著推車來回走 |
-| 5 | `host-badge` | 輸入框上方的機器名稱色塊（例如 `MBP`），多台電腦跑 Claude 時一眼分辨在哪台；名稱與顏色可在 `~/.claude/host-badge.json` 設定 `label`、`color` |
+| 5 | `host-badge` | 輸入框上方的機器名稱色塊（例如 `MBP`），多台電腦跑 Claude 時一眼分辨在哪台；`/badge <名稱>` 當下改名（寫回設定檔）；名稱與顏色也可在 `~/.claude/host-badge.json` 設定 `label`、`color` |
 | 6 | `nightshift` | `/studio` 深夜工作室、`/camp` 山頂露營 pane，跟著 Claude 的工作狀態變化 |
 | 7 | `mascot` | BMO 風格吉祥物＋LED 跑馬燈，跟著思考／工具呼叫／完成／出錯變化；`/mascot` 開關 |
 | 8 | `mod-list` | `/mods` 列出所有 mod：名稱、斜線指令、有沒有載入、做什麼 |
