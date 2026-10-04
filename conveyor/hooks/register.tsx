@@ -97,6 +97,13 @@ export const register: Register = on => {
     const f = await read($, frame)
     const visible = blocks.filter(b => !hasArrived(b, now, w))
     const { px, overlay } = render(w, { now, frame: f, blocks: visible, label, cartAt, glowAt, isFailing })
-    return <ui.Raster key="conveyor" columns={w} rows={H / 2} cells={toCells(px, w, overlay)} />
+    // 這一格只畫得出一棵樹：把下層 mod 的畫面接在下面，不要蓋掉
+    const below = await next(e)
+    return (
+      <ui.Box flexDirection="column">
+        <ui.Raster key="conveyor" columns={w} rows={H / 2} cells={toCells(px, w, overlay)} />
+        {below}
+      </ui.Box>
+    )
   })
 }

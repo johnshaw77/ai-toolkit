@@ -81,7 +81,10 @@ export const register: Register = (on) => {
       .replace(/^claude-/, "")
       .replace(/-\d{8}$/, "");
 
+    // 這一格只畫得出一棵樹：把下層 mod 的畫面接在下面，不要蓋掉
+    const below = await next(e);
     return (
+      <Box flexDirection="column">
       <Box flexDirection="row">
         {meters.map((m) => (
           <Box key={m.label} flexDirection="row" marginRight={3}>
@@ -120,6 +123,8 @@ export const register: Register = (on) => {
             {r.usd === undefined ? " " : `$${r.usd.toFixed(2)}`}
           </Text>
         </Box>
+      </Box>
+      {below}
       </Box>
     );
   });
