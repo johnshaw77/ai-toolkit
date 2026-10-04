@@ -1,0 +1,6 @@
+{
+  "name": "conveyor",
+  "version": "0.1.0",
+  "description": "Claude 工作時在輸入框上方播搬運動畫：token 方塊流進正在處理的檔案，機器人小搬推著推車來回走",
+  "types": "./types/index.d.ts"
+}
