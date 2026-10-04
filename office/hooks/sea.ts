@@ -1,6 +1,8 @@
 // 海上冒險：航行（工作中）、靠岸（待命）、暴風雨（出錯）
 
 import { PALETTE, SPRITE } from './luffy'
+import { crates, LIGHT_COLOR, moonLit, sinkPx, sunPos } from './hud'
+import type { SeaData } from './hud'
 
 export type SeaMode = 'sail' | 'dock' | 'storm'
 
@@ -30,7 +32,7 @@ const SEA: Record<SeaMode, [number, number]> = {
 const JOLLY = ['..YYY..', '.YRRRY.', 'YYYYYYY', '.WWWWW.', '.WKWKW.', '..WWW..']
 const JOLLY_PAL: Record<string, number> = { Y: 0xe8c078, R: 0xd4121e, W: 0xffffff, K: 0x101010 }
 
-export function renderSea(w: number, h: number, ms: number, mode: SeaMode): number[] {
+export function renderSea(w: number, h: number, ms: number, mode: SeaMode, data?: SeaData): number[] {
   const px: number[] = new Array(w * h).fill(0)
   const sec = ms / 1000
   const inside = (x: number, y: number) => x >= 0 && x < w && y >= 0 && y < h
@@ -50,15 +52,33 @@ export function renderSea(w: number, h: number, ms: number, mode: SeaMode): numb
 
   // 天空
   const [skyTop, skyBottom] = SKY[mode]
+  const sun = data?.usage != null ? sunPos(data.usage, w, horizon) : null
+  const dusk = mode === 'storm' || sun === null ? 0 : sun.dusk * 0.8
   for (let y = 0; y < horizon; y++) {
-    const c = mix(skyTop, skyBottom, y / horizon)
+    const c = mix(mix(skyTop, skyBottom, y / horizon), mix(0x3a2a6a, 0xff9a5a, y / horizon), dusk)
     for (let x = 0; x < w; x++) set(x, y, c)
+  }
+
+  // 月亮：7 天額度剩多少就亮多少（右側先缺）
+  if (data?.weekly != null) {
+    const lit = moonLit(data.weekly)
+    const mr = 2.6
+    const mx = 5
+    const my = 4
+    for (let dy = -3; dy <= 3; dy++) {
+      for (let dx = -3; dx <= 3; dx++) {
+        if (Math.hypot(dx, dy) > mr) continue
+        const isLit = dx / mr <= lit * 2 - 1 + 1e-9
+        blend(mx + dx, my + dy, isLit ? 0xf6f0d0 : 0x20283a, isLit ? 0.95 : 0.45)
+      }
+    }
   }
 
   // 太陽（航行）／夕陽（靠岸）
   if (mode !== 'storm') {
-    const sx = mode === 'sail' ? Math.round(w * 0.8) : Math.round(w * 0.3)
-    const sy = mode === 'sail' ? Math.round(horizon * 0.25) : horizon - 2
+    // 有 5 小時額度讀數時，太陽位置由額度決定
+    const sx = sun ? sun.x : mode === 'sail' ? Math.round(w * 0.8) : Math.round(w * 0.3)
+    const sy = sun ? sun.y : mode === 'sail' ? Math.round(horizon * 0.25) : horizon - 2
     const sr = mode === 'sail' ? 3.2 : 4.5
     for (let dy = -6; dy <= 6; dy++) {
       for (let dx = -6; dx <= 6; dx++) {
@@ -111,7 +131,7 @@ export function renderSea(w: number, h: number, ms: number, mode: SeaMode): numb
   }
   // 夕陽／太陽倒影
   if (mode !== 'storm') {
-    const rx = mode === 'sail' ? Math.round(w * 0.8) : Math.round(w * 0.3)
+    const rx = sun ? sun.x : mode === 'sail' ? Math.round(w * 0.8) : Math.round(w * 0.3)
     for (let y = horizon; y < h; y++) {
       const wob = Math.round(Math.sin(y * 1.3 + sec * 3) * 1.5)
       if ((y + Math.floor(sec * 4)) % 2 === 0) blend(rx + wob, y, 0xfff0b0, 0.5 * (1 - (y - horizon) / (h - horizon)))
@@ -151,8 +171,9 @@ export function renderSea(w: number, h: number, ms: number, mode: SeaMode): numb
   // 靠岸時船尾超出左邊界，把右邊讓給小島
   const shipX = mode === 'dock' ? -Math.round(shipW * 0.28) : Math.round((w - shipW) / 2)
   const bob = Math.round(Math.sin(sec * (mode === 'storm' ? 2.6 : 1.4)) * (mode === 'storm' ? 2 : mode === 'sail' ? 1 : 0.6))
-  const deckY = Math.round(horizon + (h - horizon) * 0.42) + bob
   const hullH = Math.max(7, Math.round(h * 0.13))
+  // context 越滿吃水越深
+  const deckY = Math.round(horizon + (h - horizon) * 0.42) + bob + sinkPx(data?.ctx ?? null, hullH)
 
   // 船身：上寬下窄，橘黃色帶、木板線
   for (let j = 0; j < hullH; j++) {
@@ -177,6 +198,19 @@ export function renderSea(w: number, h: number, ms: number, mode: SeaMode): numb
   }
   // 船底倒影
   for (let x = shipX + 3; x < shipX + shipW - 4; x++) for (let k = 0; k < 2; k++) blend(x, deckY + hullH + k, 0x000000, 0.25 - k * 0.1)
+
+  // 吃水線：沉下去的部分讓海水蓋過
+  const sunk = sinkPx(data?.ctx ?? null, hullH)
+  if (sunk > 0) {
+    for (let j = hullH - sunk; j < hullH; j++) {
+      const inset = Math.round((j / hullH) ** 1.6 * shipW * 0.18)
+      const x1 = shipX + shipW - inset - Math.round(j * 0.6)
+      for (let x = shipX + inset; x < x1; x++) {
+        const foam = j === hullH - sunk && (x + Math.floor(sec * 6)) % 3 === 0
+        blend(x, deckY + j, foam ? 0xffffff : mix(SEA[mode][0], SEA[mode][1], 0.3), foam ? 0.6 : 0.8)
+      }
+    }
+  }
 
   // 獅子船首（右側）
   const lx = shipX + shipW - 2
@@ -223,6 +257,22 @@ export function renderSea(w: number, h: number, ms: number, mode: SeaMode): numb
     set(mastX + 1 + i, mastTop + 1 + wave, 0x101010)
   }
 
+  // 貨箱：context 用量越多堆越多，堆在船尾
+  const n = crates(data?.ctx ?? null)
+  const hot = (data?.ctx ?? 0) >= 85
+  for (let k = 0; k < n; k++) {
+    const col = k % 3
+    const row = Math.floor(k / 3)
+    const bx = shipX + Math.round(shipW * 0.06) + col * 4 + row * 2
+    const by = deckY - 4 - row * 3
+    for (let y = 0; y < 3; y++) {
+      for (let x = 0; x < 3; x++) {
+        const edge = x === 0 || y === 0 || x === 2 || y === 2
+        set(bx + x, by + y, edge ? 0x6a4020 : hot ? 0xd05a3a : 0xc08848)
+      }
+    }
+  }
+
   // 魯夫站在甲板前段
   const spW = SPRITE[0]?.length ?? 0
   const spH = SPRITE.length
@@ -235,6 +285,30 @@ export function renderSea(w: number, h: number, ms: number, mode: SeaMode): numb
       if (c !== undefined) set(heroX + i, deckY - spH + j - hop, c)
     }
   })
+
+  // 信號旗：從桅頂拉到船首的支索上，掛三面旗＝測試／型別／驗證
+  if (data) {
+    // 船首立一根旗杆，支索高過魯夫的頭，旗子才不會擋到他
+    const ax = mastX
+    const ay = mastTop + 2
+    const bxs = lx + 1
+    const bys = deckY - spH - 7
+    for (let y = bys; y < ly - 3; y++) set(bxs, y, 0x6a3a1a)
+    for (let i = 0; i <= 40; i++) {
+      const t = i / 40
+      set(Math.round(ax + (bxs - ax) * t), Math.round(ay + (bys - ay) * t), 0x4a3020)
+    }
+    const lights = [data.gate.test, data.gate.typecheck, data.gate.verify]
+    lights.forEach((l, i) => {
+      const t = 0.6 + i * 0.14
+      const fx = Math.round(ax + (bxs - ax) * t)
+      const fy = Math.round(ay + (bys - ay) * t) + 1
+      const flutter = Math.round(Math.sin(sec * 5 + i) * (mode === 'dock' ? 0 : 0.6))
+      const c = LIGHT_COLOR[l]
+      const blink = l === 'fail' && Math.floor(sec * 3) % 2 === 0
+      for (let y = 0; y < 4; y++) for (let x = 0; x < 4 - (y === 3 ? 2 : 0); x++) set(fx + x + flutter * (y > 0 ? 1 : 0), fy + y, blink ? 0xffffff : c)
+    })
+  }
 
   // 海鷗
   if (mode !== 'storm') {
@@ -266,6 +340,33 @@ export function renderSea(w: number, h: number, ms: number, mode: SeaMode): numb
         bx += y % 3 === 0 ? (hash(y + sec) > 0.5 ? 1 : -1) : 0
         set(bx, y, 0xfffbe0)
       }
+    }
+  }
+  // 航海圖：底部一條航線，每項待辦是一座島，完成的長出綠地，船標停在最後完成那座
+  const todos = data?.todos ?? []
+  if (todos.length > 0) {
+    const y = h - 2
+    const x0 = 3
+    const x1 = w - 4
+    for (let x = x0; x <= x1; x += 2) blend(x, y, 0xf0e0b0, 0.55)
+    const step = todos.length === 1 ? 0 : (x1 - x0) / (todos.length - 1)
+    let last = -1
+    todos.forEach((st, i) => {
+      const ix = Math.round(x0 + step * i)
+      const done = st === 'completed'
+      if (done) last = i
+      const now = st === 'in_progress' && Math.floor(sec * 2) % 2 === 0
+      const land = done ? 0x3a9a3a : now ? 0xf0c040 : 0x9a8a6a
+      for (let dx = -2; dx <= 2; dx++) set(ix + dx, y, 0xe8d090)
+      for (let dx = -1; dx <= 1; dx++) set(ix + dx, y - 1, land)
+      set(ix, y - 2, land)
+    })
+    if (last >= 0) {
+      const sx2 = Math.round(x0 + step * last)
+      for (let k = 3; k <= 5; k++) set(sx2, y - k, 0x6a3a1a)
+      set(sx2 + 1, y - 5, 0xd4121e)
+      set(sx2 + 2, y - 5, 0xd4121e)
+      set(sx2 + 1, y - 4, 0xd4121e)
     }
   }
   return px
