@@ -5,8 +5,10 @@ export const DEFAULT = 0x01000000 // 透出終端機背景
 
 const BOT = 0x5eead4
 const EYE = 0x0f2828
-const LAMP_ON = 0xf87171
-const LAMP_OFF = 0x7f3b3b
+// 天線燈：平常綠燈閃，工具呼叫失敗後恆亮紅燈
+const LAMP_OK = 0x4ade80
+const LAMP_OK_DIM = 0x1f5a35
+const LAMP_FAIL = 0xff3b3b
 const STAR = 0x5b6170
 const GROUND_TOP = 0x8b5a2b
 const GROUND = 0x5c4033
@@ -32,6 +34,8 @@ export type World = {
   label: string
   cartAt?: number
   glowAt?: number
+  /** 最近一次工具呼叫失敗（被拒或出錯），之後有一次成功就解除 */
+  isFailing?: boolean
 }
 
 /** 一個像素格可以帶字（檔名）：[codepoint, fg, bg] */
@@ -88,15 +92,15 @@ export function walker(w: number, now: number): { x: number; dir: 1 | -1; step: 
   return { x: Math.round(x), dir: isOut ? 1 : -1, step: Math.floor((t * WALK_SPEED) / 3) }
 }
 
-function drawBot(set: Set, x0: number, dir: 1 | -1, step: number, frame: number): void {
+function drawBot(set: Set, x0: number, dir: 1 | -1, step: number, frame: number, isFailing: boolean): void {
   const at = (x: number) => (dir === 1 ? x0 + x : x0 + BOT_W - 1 - x)
   const isBlink = frame % 40 === 0
-  const isLampOn = frame % 10 < 5
+  const lamp = isFailing ? LAMP_FAIL : frame % 10 < 5 ? LAMP_OK : LAMP_OK_DIM
   BODY.forEach((row, r) => {
     ;[...row].forEach((c, x) => {
       if (c === '#') set(at(x), 4 + r, BOT)
       if (c === 'E') set(at(x), 4 + r, isBlink ? BOT : EYE)
-      if (c === '@') set(at(x), 4 + r, isLampOn ? LAMP_ON : LAMP_OFF)
+      if (c === '@') set(at(x), 4 + r, lamp)
     })
   })
   const legs = LEGS[step % 2] ?? LEGS[0]
@@ -255,7 +259,7 @@ export function render(w: number, world: World): { px: number[]; overlay: Overla
   const botX = walk.dir === 1 ? walk.x : walk.x + CART_W
   const cartX = walk.dir === 1 ? walk.x + BOT_W : walk.x
   drawCart(set, cartX, walk.dir, isLoaded, walk.step)
-  drawBot(set, botX, walk.dir, walk.step, frame)
+  drawBot(set, botX, walk.dir, walk.step, frame, world.isFailing === true)
 
   return { px, overlay }
 }

@@ -19,6 +19,7 @@ export const register: Register = on => {
   let cartAt: number | undefined
   let glowAt: number | undefined
   let isWorking = false
+  let isFailing = false
   let width = 120 // 上次畫的寬度；方塊到不到得了檔案要看它
 
   const spawn = () => {
@@ -49,6 +50,7 @@ export const register: Register = on => {
 
   on('turn.start', async ($, e, next) => {
     isWorking = true
+    isFailing = false
     label = 'thinking…'
     return next(e)
   })
@@ -76,10 +78,13 @@ export const register: Register = on => {
   })
 
   // 每次工具呼叫：檔案換成這次的目標，推車跑一趟
-  on('tool.call', ($, e, next) => {
+  on('tool.call', async ($, e, next) => {
     label = labelOf(e.tool, e as unknown as Readonly<Record<string, unknown>>)
     cartAt = now
-    return next(e)
+    const ran = await next(e)
+    // 失敗（被拒或出錯）就恆亮紅燈，直到之後有一次成功
+    isFailing = ran.deny !== undefined || ran.isError === true
+    return ran
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
@@ -91,7 +96,7 @@ export const register: Register = on => {
     width = w
     const f = await read($, frame)
     const visible = blocks.filter(b => !hasArrived(b, now, w))
-    const { px, overlay } = render(w, { now, frame: f, blocks: visible, label, cartAt, glowAt })
+    const { px, overlay } = render(w, { now, frame: f, blocks: visible, label, cartAt, glowAt, isFailing })
     return <ui.Raster key="conveyor" columns={w} rows={H / 2} cells={toCells(px, w, overlay)} />
   })
 }

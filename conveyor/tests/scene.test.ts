@@ -31,3 +31,15 @@ test('來回走：到盡頭轉身', async () => {
   expect(back.dir).toBe(-1)
   expect(back.x).toBeLessThan(span)
 })
+
+test('天線燈：失敗時恆亮紅燈，平常綠燈閃', async () => {
+  const base = { now: 1_000, blocks: [], label: 'a.ts' }
+  const RED = 0xff3b3b
+  const GREEN = 0x4ade80
+  for (const frame of [0, 5]) {
+    expect(render(100, { ...base, frame, isFailing: true }).px.includes(RED)).toBe(true)
+  }
+  expect(render(100, { ...base, frame: 0 }).px.includes(GREEN)).toBe(true)
+  expect(render(100, { ...base, frame: 5 }).px.includes(GREEN)).toBe(false)
+  expect(render(100, { ...base, frame: 0 }).px.includes(RED)).toBe(false)
+})
