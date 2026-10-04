@@ -6,6 +6,7 @@
 | 2 | `model-router` | 依 prompt 自動選模型與 effort，子 agent 依類型挑模型；`!opus`／`!sonnet`／`!haiku` 強制指定，`/router` 開關 |
 | 3 | `office` | `/office` 像素辦公室、`/sea` 海上冒險 pane，跟著 Claude 的工作狀態變化 |
 | 4 | `conveyor` | Claude 工作時的搬運動畫：黃昏城市裡，token 方塊流進正在處理的檔案，機器人小搬推著推車來回走 |
+| 5 | `host-badge` | 輸入框上方的機器名稱色塊（例如 `MBP`），多台電腦跑 Claude 時一眼分辨在哪台；名稱與顏色可在 `~/.claude/host-badge.json` 設定 `label`、`color` |
 
 ## 裝到一台電腦
 
@@ -13,7 +14,7 @@
 2. `~/.claude/settings.json` 的 `env` 加上：
 
    ```json
-   "CLAUDE_CODE_PLUGIN_DIRS": "~/.claude/mods/context-trim:~/.claude/mods/model-router:~/.claude/mods/office:~/.claude/mods/conveyor"
+   "CLAUDE_CODE_PLUGIN_DIRS": "~/.claude/mods/host-badge:~/.claude/mods/context-trim:~/.claude/mods/model-router:~/.claude/mods/office:~/.claude/mods/conveyor"
    ```
 
    （Windows 用 `;` 分隔）
