@@ -1,0 +1,1 @@
+{ "name": "todo-panel", "version": "0.1.0", "description": "把 TodoWrite／Task 清單畫成側欄面板，輸入框上方一行摘要，可標完成或跳過", "types": "./types/index.d.ts" }
