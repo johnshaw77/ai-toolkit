@@ -369,3 +369,35 @@ skill 連結 5 項 ✗，各自印出 brew／npx／uv／ln -s 的指令，並提
 
 **沒驗到的**：Windows 實機（沒有 Windows 電腦）。Windows 的步驟與 doctor 的 Windows 提示
 是照文件寫的，要等同事實際裝一次、回報 `npm run doctor` 的輸出。
+
+## 2026-10-07　clean-view：簡潔檢視 mod
+
+`claude plugin validate`：manifest、hooks、types 全部通過。hooks 涵蓋 15 個掛點，
+state 讀寫都在 `clean-view` 底下的 3 個 key。repo 根的 `marketplace.json` 也通過。
+
+型別檢查（TypeScript 5.6，用 skill 附的 tsconfig）：0 個錯誤。
+
+`claude plugin test`：13 個全過，終端機與桌面兩種畫面都有驗到。
+
+| # | 測試 | 看到的結果 |
+|---:|---|---|
+| 1 | 名稱清理 | `` Build the pricing section in `src/Pricing.tsx` `` → `Build the pricing section in`；句中路徑消失；80 字元 → `Write a friendly welcome message for…`（37 格）；中文長名稱 ≤ 40 格 |
+| 2 | 待辦清單 + 60% | ✓／▶ `██████░░░░` 60%／下一步／稍後，terminal、desktop 都有 |
+| 3 | 窄視窗 | 30 欄時名稱欄剛好 10 格 |
+| 4 | 權限提示 | 「需要你」＋「Claude 需要你同意才能繼續」＋ ‖；下一個工具跑完就回到 ▶ |
+| 5 | `/simple off` | 清單收起，只剩 `○ 簡潔檢視：關`；ToolUse 列重新出現；按鈕切回開並跳出 toast |
+| 6 | 重開後記得設定 | store 存 false → session.start 後按鈕顯示「關」 |
+| 7 | plan_steps → 回報 100 | 第一步 ✓、第二步 ▶ 進行中、第三步 下一步；140% 夾成 100% |
+| 8 | 計畫閘門 | 沒有計畫時 Read 被擋（訊息提到 plan_steps），ToolSearch 放行；有計畫後 Read 放行 |
+| 9 | 完成 | 「✓ 全部完成 · 建立登陸頁 · 花了 2分14秒」（標題是 Haiku 取的）；5 秒後縮成一行 |
+| 10 | Esc／API 錯誤 | 「■ 已停止 · … · 你按了 Esc」；429 →「⚠ 卡住了：你已達到使用上限，請稍後再試」 |
+
+**還沒驗到的**：在真實 session 裡 hot reload 後的實際畫面（送出請求、看計畫出現、
+權限提示、按鈕切換、重開後的設定）。這要等 mod 在這個 session 載入後，
+由使用者送一個請求來實測。
+
+**實測（同一天）**：hot reload 啟用後送出「幫我寫一首關於貓的短詩」。
+`plan_steps` 回 `Planned 2 steps. The first one has started.`，兩次 `report_progress`
+都回 `Progress noted: 100%.`。使用者確認畫面都正常，包括計畫出現、工具列隱藏、
+全部完成後縮成一行、按鈕切換。權限提示和重開後的設定這次沒有特別觸發，
+只有測試涵蓋。

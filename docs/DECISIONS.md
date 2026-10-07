@@ -327,3 +327,47 @@ outDir 就是這樣寫的——同事照範例複製就會失敗。範例、koko
 
 它透過 `npx hyperframes tts` 呼叫；Node 在 Windows 上不開 shell 就不能執行 `npx.cmd`，
 開 shell 又要處理中文講稿的跳脫。kokoro 本來就排在最後、中文不建議用，直接標明不支援。
+
+## 2026-10-07　clean-view：簡潔檢視 mod
+
+### 介面全部用繁體中文（使用者指定）
+
+原規格是英文。步驟名稱上限從「40 字元」改成「40 個顯示格」，約等於 20 個中文字，
+欄寬用顯示寬度計算（中日韓文字佔 2 格），窄視窗才不會換行。回給 Claude 的工具結果
+（`Planned N steps…`、`Progress noted: N%.`）維持規格的英文，因為只有模型會讀到。
+
+### 開發版放在 session 的 dev-mods 資料夾，repo 裡放一份可安裝的副本
+
+hot reload 只監看 `~/.claude/dev-mods/<session>/`，所以開發在那裡進行。`clean-view/`
+是複製到 repo 的副本，並在根目錄的 `marketplace.json` 加上一筆，讓別台電腦可以用
+`/plugin install clean-view --marketplace johnshaw77/ai-toolkit` 安裝。
+**代價**：之後修改要記得同步兩邊。
+
+### 計畫閘門出錯時放行，不擋
+
+`claude plugin validate` 會列出 tool.call 是「沒有 .catch 的 gating hook」。這是故意的：
+hook 出錯時引擎會跳過它，等於放行。這是給非技術使用者用的 UX mod，hook 壞掉時
+寧可少一道閘門，也不要讓 Claude 什麼工具都不能用。
+
+### 「Claude 在等你回覆」之後你回覆了：沿用同一份工作
+
+規格寫「沒有工作在跑時送出的提示就開始新工作」。但在「需要你：Claude 在等你回覆」
+的狀態下，你的回覆其實是同一件事的延續，所以沿用原本的清單。其他狀態（完成、停止、
+卡住）都會開始新工作。
+
+### 你拒絕權限時保持「卡住」
+
+拒絕權限通常會讓這一輪以中斷結束。若照一般規則會變成「已停止 · 你按了 Esc」，
+但實際上你並沒有按 Esc。所以這一輪只要有權限被拒絕，結束時就維持「卡住了：
+你拒絕了一個步驟，所以 Claude 先暫停了」。
+
+### API 錯誤的原因：StopFailure 和 turn.complete 兩邊都處理
+
+`turn.complete` 只告訴我們 `reason: 'error'`，錯誤種類要從 `classic.StopFailure` 的
+`error` 和 `error_details` 才看得到。兩者到達的先後不一定，所以兩邊都會寫入：
+先到的先顯示，後到的再補上更準確的原因。
+
+### 測試從畫面檢查，不直接讀 state
+
+測試用的 `$` 沒有 `state` 和 `store`。所以每個行為都 mount 輸入框上方的清單，
+再找畫出來的文字，這樣也順便驗證了畫面本身。
