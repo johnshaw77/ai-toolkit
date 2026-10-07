@@ -450,3 +450,58 @@ helper，完成時就對不到卡片了，舊工作的總結也看不到。
 
 而且人數設為 N 時，連「同步檔案」這種不適合拆的請求也會帶上拆工指示，結束時還會
 補送「你只用了 0 位」的提醒。做這類工作前，先 `/dock 1`。
+
+## 2026-10-07　clean-view 搬到 repo 的 `mods/`
+
+使用者指定：mod 的原始碼放在 repo 的 `mods/` 底下，全域安裝的副本另外處理。所以用
+`git mv clean-view mods/clean-view` 搬移，`marketplace.json` 的 `source` 改成
+`./mods/clean-view`，`~/.claude/mods/README.md` 裡的原始碼路徑也一起改。
+全域副本 `~/.claude/mods/clean-view` 和 `CLAUDE_CODE_PLUGIN_DIRS` 都不動。
+之後新做的 mod 也放在 `mods/<名稱>/`。
+
+## 2026-10-07　Agent Dock：一位都沒派就不提醒；`/dock 3 問題` 一行完成
+
+### 0 位不補送提醒（使用者決定）
+
+原規格是「用了少於 N 位就補送一次提醒」。實際用下來，問答、commit、搬檔這類不能拆的
+請求，結束後每次都會收到「你只用了 0 位」。所以改成派了至少 1 位、但不到 N 位才提醒；
+一位都沒派，就當成這個請求本來就不適合拆。
+
+### `/dock 3 問題內容`
+
+這個指令會設好人數，開好 Dock 工作，再把問題送出。外掛送出的 prompt 有兩個限制：
+- 不會經過外掛自己的 `prompt.submit` hook。
+- `$.prompt.submit` 不能帶 `context`。
+
+所以拆工指示改用 `$.session.append` 先插一列只有模型看得到的 user 列，再用
+`asUser: true` 把問題當成使用者的話送出。超過 20 人時只設定待確認，不送出問題，
+要在面板確認後再送一次。
+
+測試環境沒有主對話，那一列指示接不到，所以測試只驗證「問題有送出、面板開了人數 3 的
+工作」，指示有沒有送到要靠實測確認。
+
+## 2026-10-07　ccdash：修 6 個問題（使用者同意「照你說的做」）
+
+### hook 交給背景子行程送出
+
+原本 hook 在每次工具呼叫前後都會同步 POST。collector 連不到時（例如經 Tailscale 連到睡著的機器），每次要等到逾時：HTTP 1.5 秒，加上 tmux 查詢最多 1 秒。
+
+現在改成 hook 只負責解析事件，然後用 `Popen` 啟動 `ccdash.py _post`，把紀錄從 stdin 交給它，不等它結束。POSIX 上用 `start_new_session`，Windows 上用 `DETACHED_PROCESS`。查 tmux pane 也移到子行程裡做。
+
+**代價**：每個事件多開一個 Python 行程（背景跑，不佔 Claude 的時間）。另外，Windows 上背景子行程能不能正常脫離，還沒實測。
+
+### collector 蓋時間，GET 附上 `now`
+
+各台機器的時鐘不一定一致，所以 `ts` 改由 collector 收到事件時蓋章。GET 的回傳從 list 改成 `{"now", "sessions"}`，TUI 用 collector 的時間計算。舊格式的 list 照樣讀得懂。
+
+### 預設只綁 127.0.0.1；沒設密碼又不是綁本機就拒絕啟動
+
+原本預設 `0.0.0.0`、token 又是選填，等於區網裡誰都能讀寫。這件事本來是待辦第 4 項，現在直接修掉。部署時改用 `--bind $(tailscale ip -4)`。
+
+### 遮蔽金鑰：Bearer 要最先處理
+
+第一次實測發現，`Authorization: Bearer abc.def` 會被「名稱像金鑰的變數」那條規則先吃掉，它把「Bearer」當成值換掉，真正的 token 反而留下來，也寫進了狀態檔。調整規則順序後，8 種寫法都不會再洩漏。
+
+### 順手修好 ccdash/CLAUDE.md 的格式
+
+被跳脫的程式碼區塊、被自動轉成錯誤連結的 `ccdash.py` 和 `README.md`、網址多出來的反引號，都一起改回來了。這些地方本來就要配合這次修改重寫。

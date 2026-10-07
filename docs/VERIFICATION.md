@@ -440,3 +440,29 @@ matcher 都是寫死的字串（`agent-dock`），沒有 `?`。
 - Esc 中斷排隊中的 helper。
 - 「快速省錢」實際把 helper 換成 Haiku：只看得到 Dock 有改寫呼叫，沒有回頭確認 helper 實際用的模型。
 - `~/.claude/mods/clean-view` 在新 session 的載入：要開新視窗才會生效。
+
+## 2026-10-07　ccdash：修 6 個問題後的本機驗證
+
+在 MacBook Pro 起了 collector（`127.0.0.1:17777`／`17779`，有設 token），用模擬的 hook 事件打過一輪：
+
+| # | 打了什麼 | 拿到什麼 |
+|---:|---|---|
+| 1 | GET，帶正確／不帶／錯誤的 token | 200／401／401 |
+| 2 | 5 個 hook 事件（SessionStart、PreToolUse Bash、Notification permission_prompt、Notification idle_prompt、SessionEnd） | 每個都 exit 0、約 0.10 秒；狀態依序是 working、waiting、idle，SessionEnd 之後該筆被移除 |
+| 3 | POST `state: "foo"`／缺 `session_id`／壞 JSON／`[1,2]` | 400 ×4 |
+| 4 | POST 1 MB | 413 |
+| 5 | collector 指向黑洞 IP `10.255.255.1` | hook 0.108 秒結束 |
+| 6 | 不設 token、`--bind 0.0.0.0` | 拒絕啟動，exit 1，並提示用 Tailscale IP |
+| 7 | 指令含 `Bearer abc.def`、`--token hunter2` | 第一次 `abc.def` 外洩到狀態檔 → 修正後重測：狀態檔含金鑰 0 次；另外 8 種寫法逐一驗證都已遮蔽 |
+| 8 | 狀態檔塞一筆 `state: "weird"` 的舊資料後重啟 | 被濾掉，只剩 3 筆正常資料 |
+| 9 | TUI 畫一幀（用 uv 臨時裝 rich，換掉 Live 取出畫面） | 🟡1／🟢1／⚪1，Windows 路徑取出專案名 `report`、中文專案名、已遮蔽的指令都正確 |
+| 10 | TUI 用錯 token／collector 關掉 | 只顯示「密碼不對…」／「連不上 collector…」，沒有當掉 |
+| 11 | 沒裝 rich 跑 TUI | `TUI 需要 rich：pip install rich`，exit 1 |
+
+collector 的 log 全程是空的，沒有例外。
+
+**沒驗到的**：
+- 真實 Claude Code 的 hook 事件
+- 跨機器經 Tailscale 連線
+- Windows 上的背景子行程
+- 互動模式的 TUI 實際刷新與響鈴：只驗了單幀畫面
