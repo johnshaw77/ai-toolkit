@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { initials, instruction, parseSize, restoreSize } from '../hooks/dock-logic'
+import { initials, instruction, parseDockArgs, parseSize, restoreSize } from '../hooks/dock-logic'
 
 // 測試環境有 setTimeout，但 hooks 用的 lib 沒有宣告它
 declare function setTimeout(fn: () => void, ms: number): unknown
@@ -29,6 +29,7 @@ function pane(bodyColumns = 120) {
 }
 
 type World = {
+  appended: string[]
   contexts: (readonly string[] | undefined)[]
   submitted: string[]
   statuses: (string | undefined)[]
@@ -37,7 +38,7 @@ type World = {
 
 /** 引擎底層：plugin 會用到的每個名詞都在記憶體裡回答。 */
 function engineBeneath(on: On, stored: Record<string, unknown> = {}, env: Record<string, string> = {}): World {
-  const world: World = { contexts: [], submitted: [], statuses: [], panes: new Set() }
+  const world: World = { appended: [], contexts: [], submitted: [], statuses: [], panes: new Set() }
   mock.clock(on, { now: 1_000_000 })
   mock.store(on, stored)
   mock.env(on, { HOME: '/tmp/dock-test-home', ...env })
@@ -71,10 +72,14 @@ function engineBeneath(on: On, stored: Record<string, unknown> = {}, env: Record
   on('turn.complete', (_$, e) => ({ text: e.answer }))
   on('prompt.submit', (_$, e) => {
     if (e.origin.kind === 'plugin') world.submitted.push(e.text)
-    else world.contexts.push(e.context)
+    world.contexts.push(e.context)
     return { text: e.text, context: e.context }
   })
-  on('session.append', (_$, e, next) => next(e))
+  on('session.append', (_$, e, next) => {
+    const blocks = (e.message.content ?? []) as { type?: string; text?: string }[]
+    if (e.origin.kind === 'plugin') world.appended.push(blocks.map(b => b.text ?? '').join(''))
+    return next(e)
+  })
   let launched = 0
   on('tool.call', (_$, e) => {
     if (e.tool === 'Agent') {
@@ -123,6 +128,13 @@ test('1b. 徽章一律是兩個英文字母或編號', () => {
   expect(initials('Price check: Panera', 2)).toBe('PP')
   expect(initials('比價：吳寶春麥方店', 0)).toBe('01')
   expect(initials('研究市場', 11)).toBe('12')
+})
+
+test('1c. /dock 的參數：人數＋要送出的問題', () => {
+  expect(parseDockArgs('3')).toEqual({ size: 3, ask: '' })
+  expect(parseDockArgs(' 3 收集鴻海、台積電最新消息 ')).toEqual({ size: 3, ask: '收集鴻海、台積電最新消息' })
+  expect(parseDockArgs('abc 問題').size).toBeNull()
+  expect(parseDockArgs('').size).toBeNull()
 })
 
 test('2. 存了 50 人，新 session 回到 1；10 人照舊', async ($, on) => {
@@ -186,6 +198,34 @@ test('5. 10 人只用了 3 位，剛好補送一次提醒', async ($, on) => {
   expect(world.submitted).toHaveLength(1)
 })
 
+test('5b. 一位都沒派（問答、commit）就不提醒', async ($, on) => {
+  const world = engineBeneath(on, { 'dock.teamSize': 3 })
+  await boot($)
+  await ask($, '幫我 commit 這些改動')
+  await $.turn.complete({ answer: '好了', durationMs: 1000, isAborted: false, turnId: 'm1', reason: 'answer' })
+  await settle()
+  expect(world.submitted).toEqual([])
+})
+
+test('8b. /dock 3 問題：設好人數並送出，請求帶上拆成 3 份的指示', async ($, on) => {
+  const world = engineBeneath(on, { 'dock.teamSize': 1 })
+  await boot($)
+  const ran = await $.command.run({ command: 'dock', args: '3 收集鴻海、台積電最新消息', ...COMMAND })
+  expect(ran.text).toBe('團隊人數設為 3，送出：收集鴻海、台積電最新消息')
+  await settle()
+  expect(world.submitted).toEqual(['收集鴻海、台積電最新消息'])
+  // 拆工指示走 $.session.append，測試環境沒有主對話接得到，實測時再確認
+  const ui = await $.ui.mount({ ...pane(), surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /^收集鴻海/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^ 3 $/ })).toBeDefined()
+  await ui.unmount()
+
+  const big = await $.command.run({ command: 'dock', args: '50 收集消息', ...COMMAND })
+  expect(big.text).toBe('請在 Agent Dock 確認 50 位的團隊，確認後再送出問題。')
+  await settle()
+  expect(world.submitted).toHaveLength(1)
+})
+
 test('6 & 7. 三位助手：排隊 → 工作中 → 60% → 完成，最後顯示總結', async ($, on) => {
   // 同時上限設成 1，第 2、3 位要排隊
   engineBeneath(on, { 'dock.teamSize': 3 }, { CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS: '1' })
@@ -238,7 +278,7 @@ test('8. /dock 收成狀態列徽章，再打一次就打開', async ($, on) => 
   expect(world.statuses.at(-1)).toBe('◆ Dock 待命 · 團隊 3 人')
 
   const bad = await $.command.run({ command: 'dock', args: 'abc', ...COMMAND })
-  expect(bad.text).toBe('團隊人數是 1 到 100 的整數，例如 /dock 10。')
+  expect(bad.text).toBe('團隊人數是 1 到 100 的整數，例如 /dock 10 或 /dock 3 你的問題。')
   const big = await $.command.run({ command: 'dock', args: '50', ...COMMAND })
   expect(big.text).toBe('請在 Agent Dock 確認 50 位的團隊。')
 })

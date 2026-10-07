@@ -39,6 +39,13 @@ export function parseSize(text: unknown): number | null {
   return n >= 1 && n <= MAX_SIZE ? n : null
 }
 
+/** `/dock` 的參數：「3」→ 人數 3；「3 收集台積電消息」→ 人數 3＋要送出的問題。 */
+export function parseDockArgs(args: string): { size: number | null; ask: string } {
+  const match = args.trim().match(/^(\S+)(?:\s+([\s\S]*))?$/)
+  if (match === null) return { size: null, ask: '' }
+  return { size: parseSize(match[1]), ask: (match[2] ?? '').trim() }
+}
+
 /** 新 session 讀回存檔：超過 20 人不沿用，回到 1。 */
 export function restoreSize(saved: unknown): number {
   const n = parseSize(saved)

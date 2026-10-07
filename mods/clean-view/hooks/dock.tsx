@@ -40,6 +40,7 @@ import {
   newDockJob,
   nudgeText,
   overallPercent,
+  parseDockArgs,
   parseSize,
   restoreSize,
   settleJob,
@@ -199,16 +200,34 @@ export function registerDock(on: On): void {
         })()
         return { text: '切換 Agent Dock。' }
       }
-      const n = parseSize(arg)
-      if (n === null) return { text: '團隊人數是 1 到 100 的整數，例如 /dock 10。' }
+      const { size: n, ask } = parseDockArgs(arg)
+      if (n === null) return { text: '團隊人數是 1 到 100 的整數，例如 /dock 10 或 /dock 3 你的問題。' }
+      const willAsk = ask !== '' && n <= BIG_TEAM
       void (async () => {
         try {
           await chooseSize($, n)
         } finally {
           openDock($)
         }
+        if (willAsk) {
+          // 外掛自己送出的 prompt 不經過自己的 prompt.submit hook，也不能帶 context：
+          // 工作在這裡開好，拆工指示先插成一列只有模型看得到的 user 列，再把問題當成你的話送出
+          const now = await $.clock.now()
+          await change($, st => ({ ...st, job: newDockJob(`job-${now}`, ask, n, now) }))
+          if (n > 1) {
+            try {
+              await $.session.append({ message: { type: 'user', content: [{ type: 'text', text: instruction(n) }] } })
+            } catch {
+              $.ui.toast('沒能附上拆工指示，這次由 Claude 自己決定要不要拆')
+            }
+          }
+          await $.prompt.submit({ text: ask, asUser: true })
+        }
       })()
-      return { text: n > BIG_TEAM ? `請在 Agent Dock 確認 ${n} 位的團隊。` : `團隊人數設為 ${n}。` }
+      if (n > BIG_TEAM) {
+        return { text: `請在 Agent Dock 確認 ${n} 位的團隊${ask === '' ? '' : '，確認後再送出問題'}。` }
+      }
+      return { text: willAsk ? `團隊人數設為 ${n}，送出：${ask}` : `團隊人數設為 ${n}。` }
     } catch {
       return { text: 'Agent Dock 暫時出了點問題，請再試一次。' }
     }
@@ -338,7 +357,8 @@ export function registerDock(on: On): void {
     if (job !== null && job.phase === 'live') {
       if (e.reason === 'aborted') {
         await changeJob($, j => stopJob(j, now))
-      } else if (job.size > 1 && job.launched < job.size && !job.hasNudged && e.reason === 'answer') {
+      } else if (job.size > 1 && job.launched > 0 && job.launched < job.size && !job.hasNudged && e.reason === 'answer') {
+        // 一位都沒派代表這個請求本來就不適合拆（問答、commit），不提醒
         await changeJob($, j => ({ ...j, hasNudged: true, isMainIdle: false }))
         void $.prompt.submit({ text: nudgeText(job.launched, job.size) })
       } else if (job.cards.length === 0) {
