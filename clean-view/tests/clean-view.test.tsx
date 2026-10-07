@@ -29,6 +29,11 @@ const USAGE = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, c
 function engineBeneath(on: On, stored: Record<string, unknown> = {}) {
   const clock = mock.clock(on, { now: 1_000_000 })
   mock.store(on, stored)
+  mock.env(on, { HOME: '/tmp/clean-view-test-home' })
+  on('session.id', () => ({ value: 'session-1' }))
+  on('ui.panes', () => ({ value: [] }))
+  on('ui.status', () => ({ value: undefined }))
+  on('fs.write', () => ({ value: undefined }))
   const toasts: string[] = []
   on('turn.start', (_$, e) => ({ turnId: e.turnId }))
   on('turn.complete', (_$, e) => ({ text: e.answer }))

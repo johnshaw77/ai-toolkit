@@ -371,3 +371,82 @@ hook 出錯時引擎會跳過它，等於放行。這是給非技術使用者用
 
 測試用的 `$` 沒有 `state` 和 `store`。所以每個行為都 mount 輸入框上方的清單，
 再找畫出來的文字，這樣也順便驗證了畫面本身。
+
+## 2026-10-07　clean-view 0.2.0：Agent Dock
+
+### 跟 Clean View 放在同一個外掛
+
+照需求放在同一個外掛，不另開新外掛。Dock 用的是 Clean View 註冊的 `report_progress`，
+helper 的回報用 `{ tool, agentId: /./ }` 這個 matcher 接住；Dock 先註冊，所以會比
+Clean View 的同名工具 hook 先拿到。同一個外掛裡，同一個事件加同一個 matcher 只能有一個
+hook，所以 Dock 的 `session.start`、`turn.complete` 都改用萬用 matcher
+（`{ cwd: /^/ }`、`{ reason: /^/ }`）。
+
+### 介面用繁體中文（使用者後來改的）
+
+規格原本是英文。字標「A G E N T   D O C K」保留英文，因為這是產品名稱；
+其他文字都改成中文，例如「● 進 行 中／完 成／待 命」、「N 位助手完成「…」，花了 …」。
+給模型看的文字維持英文：拆工指示、上限訊息、補送提醒。
+
+### 徽章只用英文字母，畫法改成 inverse
+
+第一版用「深色字＋指定 hex 底色」，中文名稱取第一個字。實測時使用者看不到字，
+推測是底色沒畫出來，深色字貼在深色背景上。所以改成兩點：
+- 一律用名稱裡的英文字取兩個字母（`GC`、`PA`），沒有英文就用編號（`01`）。
+- 改用 `inverse`，由終端機自己對調字色和底色，不依賴 hex 底色有沒有畫出來。
+
+選中的人數 chip 也一起改。
+
+### helper 是背景執行，完成時間看它自己那一輪的 turn.complete
+
+在這個 build，Agent 工具會馬上回 `async_launched` 和 `agentId`，helper 在背景跑。
+所以卡片是這樣變化的：
+- `tool.call` 放行時，卡片變成「工作中」。
+- 結果帶回 `agentId` 後，跟這張卡片綁在一起。
+- 那個 helper 的 `turn.complete`（帶 `agentId`）到了，卡片才變成完成或卡住。
+
+如果是同步完成（`status: 'completed'`），`tool.call` 一回來就直接標成完成。
+整份工作要「全部卡片都結束，而且主對話這一輪也結束、沒有等著補送的提醒」才算完成。
+
+### 排隊卡片在 tool.call 放行時也會補畫
+
+Claude 一寫出 Agent 呼叫，`session.append`（door 是 `response`）就會先畫出排隊卡片。
+但測試工具沒辦法替 `session.append` 回應，所以另外在 `tool.call` 放行時也補一張排隊卡片，
+兩條路徑都能畫出來。
+
+### 入口：輸入框上方那列的 ◆ Dock 按鈕
+
+使用者沒有 Tools 選單，而狀態列在這個 API 只能放文字、不能放按鈕。所以入口放在
+Clean View 那一列，跟開關按鈕並排。按下按鈕和輸入 `/dock` 都算「使用者自己打開的」，
+窄視窗也放得下。
+
+### 待命時的座位不閃爍
+
+需求有兩點衝突：「待命時座位輕輕閃爍」和「待命時不跑計時器」。依照引擎規則，
+待命時不跑計時器，座位用固定的深淺交錯呈現。
+
+### 安裝方式：~/.claude/mods/clean-view＋CLAUDE_CODE_PLUGIN_DIRS
+
+這台電腦沒有用 `/plugin install` 裝過 clean-view，其他 mod 都是放在 `~/.claude/mods/`、
+再透過 `CLAUDE_CODE_PLUGIN_DIRS` 載入。所以同步後把 `~/.claude/mods/clean-view` 加進
+那個環境變數，也在 `~/.claude/mods/README.md` 補上一列。
+
+另外在 `env` 加上 `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS=20`、
+`CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY=20`，讓每一波是 20 位。
+
+**代價**：現在有三份要同步：dev-mods 開發版、repo、`~/.claude/mods`。
+
+### 型別檢查用不含 MCP 清單的 tsconfig
+
+外掛載入後，引擎會在 `.claude-plugin/types/claude-code-mcp/` 列出所有接上的 MCP 工具，
+這台電腦有 458 個。這麼大的 union 讓 tsc 在 `tool.call` 的 matcher 上推導過深，
+`e` 被推成 `never`。拿掉這份清單（只用 API 宣告）就是 0 個錯誤，所以問題在環境，
+不是程式碼。
+
+### 已知限制：上一批 helper 還在跑時送出新請求，會開一份新工作
+
+`prompt.submit` 在主對話閒置時收到新請求，會開新的 Dock 工作。這時舊工作還在跑的
+helper，完成時就對不到卡片了，舊工作的總結也看不到。
+
+而且人數設為 N 時，連「同步檔案」這種不適合拆的請求也會帶上拆工指示，結束時還會
+補送「你只用了 0 位」的提醒。做這類工作前，先 `/dock 1`。

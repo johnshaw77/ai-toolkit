@@ -27,6 +27,7 @@ import {
   truncateCells,
   FALLBACK_NAME,
 } from './checklist'
+import { DOCK_COLUMNS, DOCK_PANE, DOCK_TITLE, NUDGE_PREFIX, TOO_NARROW } from './dock-logic'
 
 type Engine = EngineInterface
 
@@ -188,7 +189,10 @@ export function registerCleanView(on: On): void {
 
   on('turn.start', async ($, e, next) => {
     const text = e.text.trim()
-    const isRealPrompt = text !== '' && !text.startsWith('/') && !text.includes('<command-name>')
+    // 斜線指令、helper 完成通知（<task-notification>）和 Agent Dock 補送的提醒都不算新工作
+    const isRealPrompt =
+      text !== '' && !text.startsWith('/') && !text.startsWith('<') && !text.includes('<command-name>') &&
+      !text.startsWith(NUDGE_PREFIX)
     if (isRealPrompt && (await read($, enabled))) {
       const c = await read($, checklist)
       wasRejected = false
@@ -390,12 +394,29 @@ export function registerCleanView(on: On): void {
         }}
       />
     )
-    const room = Math.max(4, width - (displayWidth(label) + 4) - 1)
+    // 沒有 Tools 選單，Agent Dock 的入口放在這一列：按下去才開，窄視窗也放得下
+    const dockButton = (
+      <Button
+        key="agent-dock-open"
+        label="◆ Dock"
+        onPress={async () => {
+          const opened = await $.ui.open({ id: DOCK_PANE, title: DOCK_TITLE, columns: DOCK_COLUMNS })
+          if (!opened.isPlaced) $.ui.toast(TOO_NARROW)
+        }}
+      />
+    )
+    const buttons = (
+      <Box flexDirection="row" gap={1}>
+        {dockButton}
+        {toggle}
+      </Box>
+    )
+    const room = Math.max(4, width - (displayWidth(label) + 4) - (displayWidth('◆ Dock') + 4) - 2)
 
     if (!isOn || c.phase === 'idle') {
       return (
         <Box flexDirection="row" justifyContent="flex-end" width={width}>
-          {toggle}
+          {buttons}
         </Box>
       )
     }
@@ -405,7 +426,7 @@ export function registerCleanView(on: On): void {
     const headerRow = (left: RenderElement) => (
       <Box flexDirection="row" justifyContent="space-between" width={width}>
         <Box flexShrink={1}>{left}</Box>
-        {toggle}
+        {buttons}
       </Box>
     )
 

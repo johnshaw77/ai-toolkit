@@ -1,7 +1,7 @@
 {
   "name": "clean-view",
-  "version": "0.1.0",
-  "description": "簡潔檢視：工作時隱藏工具細節，在輸入框上方顯示一張白話進度清單",
+  "version": "0.2.0",
+  "description": "簡潔檢視（白話進度清單）＋ Agent Dock（把請求拆給 N 位 helper 平行處理的面板）",
   "author": { "name": "john_hsiao" },
   "types": "./types/index.d.ts"
 }

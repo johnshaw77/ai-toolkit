@@ -401,3 +401,42 @@ state 讀寫都在 `clean-view` 底下的 3 個 key。repo 根的 `marketplace.j
 都回 `Progress noted: 100%.`。使用者確認畫面都正常，包括計畫出現、工具列隱藏、
 全部完成後縮成一行、按鈕切換。權限提示和重開後的設定這次沒有特別觸發，
 只有測試涵蓋。
+
+## 2026-10-07　clean-view 0.2.0：Agent Dock
+
+`claude plugin validate`：通過。15 個 Dock 掛點加上原本 Clean View 的掛點都列得出來，
+matcher 都是寫死的字串（`agent-dock`），沒有 `?`。
+
+型別檢查（TypeScript 5.6，API 宣告，不含這台電腦的 458 個 MCP 工具）：0 個錯誤。
+
+`claude plugin test`：23 個全過，Clean View 14 個、Dock 9 個。
+
+| # | 測試 | 看到的結果 |
+|---:|---|---|
+| 1 | `parseSize` | `"10"`→10、`" 25 "`→25；`"0"`、`"101"`、`"abc"`、`"2.5"`→null |
+| 2 | 徽章 | `比價：Gontran Cherrier`→`GC`、`比價：PAUL 台北`→`PA`、純中文→`01` |
+| 3 | 人數不沿用 | 存 50 → 新 session 面板選中 1；存 10 → 還是 10 |
+| 4 | 拆工指示 | 5 人時 context 剛好是 `instruction(5)`（含 `exactly 5`）；1 人時沒有 context |
+| 5 | 上限 | 5 人時第 6 個 Agent 被擋：`Team Size is 5: this request already has 5 helpers…` |
+| 6 | 補送提醒 | 10 人只用了 3 位 → 送一次 `You used 3 of 10 helpers…`；第二輪結束沒有再送 |
+| 7 | 排隊與卡片 | 同時上限設 1：1 位進行中、2 位排隊（terminal、desktop 都有）；helper 回報 60 → 卡片 60%；依序遞補後 3 張都是 100% |
+| 8 | 總結 | `✓ 3 位助手完成「研究烘焙坊定價」，花了 …` |
+| 9 | `/dock` | 開 → 關，狀態列徽章 `◆ Dock 待命 · 團隊 3 人`；`abc` 和 `50` 的回覆都正確 |
+
+**實測一（人數 1）**：請求「幫我研究台北三家知名烘焙坊的可頌價格」，我自己拆成 3 位 helper。
+- agents-now 檔案：工作中 3 → 完成 3、卡住 0。
+- 使用者確認：卡片、進度條、任務列和總結都有看到。
+- 但徽章看不到字，修正方式記在 DECISIONS。
+
+**實測二（人數 3）**：先 `/dock 3`（回覆「團隊人數設為 3。」），再送出「比較 Starbucks、Louisa、cama 三家咖啡店在台北的中杯拿鐵價格」。
+- 請求帶上了 `Agent Dock — Team Size is 3` 的拆工指示，我照指示一次派出 3 位。
+- agents-now 檔案：`teamSize 3`、工作中 3。
+- 使用者確認英文徽章看得到。
+
+**沒驗到的**：
+- 50 人（使用者錄影時自己跑）。
+- 超過 20 人的確認框實際畫面。
+- 超過同時上限的真實排隊（只有測試涵蓋）。
+- Esc 中斷排隊中的 helper。
+- 「快速省錢」實際把 helper 換成 Haiku：只看得到 Dock 有改寫呼叫，沒有回頭確認 helper 實際用的模型。
+- `~/.claude/mods/clean-view` 在新 session 的載入：要開新視窗才會生效。
