@@ -14,6 +14,7 @@
 | 10 | `todo-rail` | 輸入框上方一排小方塊顯示待辦進度，旁邊寫目前進行中的項目 |
 | 11 | `gate-lights` | 完成定義的三顆燈：測試、型別檢查、瀏覽器驗證 |
 | 12 | `todo-panel` | 把 TodoWrite／Task 清單畫成側欄面板，輸入框上方一行摘要 |
+| 13 | `clean-view` | 簡潔檢視（隱藏工具細節、白話進度清單，`/simple`）＋ Agent Dock（把請求拆給 N 位 helper 的面板，`/dock`）；原始碼在 ai-toolkit repo 的 `mods/clean-view/` |
 
 ## 裝到一台電腦
 
@@ -21,7 +22,7 @@
 2. `~/.claude/settings.json` 的 `env` 加上：
 
    ```json
-   "CLAUDE_CODE_PLUGIN_DIRS": "~/.claude/mods/host-badge:~/.claude/mods/context-trim:~/.claude/mods/model-router:~/.claude/mods/office:~/.claude/mods/conveyor:~/.claude/mods/nightshift:~/.claude/mods/mascot:~/.claude/mods/mod-list:~/.claude/mods/done-ding:~/.claude/mods/todo-rail:~/.claude/mods/gate-lights:~/.claude/mods/todo-panel"
+   "CLAUDE_CODE_PLUGIN_DIRS": "~/.claude/mods/host-badge:~/.claude/mods/context-trim:~/.claude/mods/model-router:~/.claude/mods/office:~/.claude/mods/conveyor:~/.claude/mods/nightshift:~/.claude/mods/mascot:~/.claude/mods/mod-list:~/.claude/mods/done-ding:~/.claude/mods/todo-rail:~/.claude/mods/gate-lights:~/.claude/mods/todo-panel:~/.claude/mods/clean-view"
    ```
 
    （Windows 用 `;` 分隔）
