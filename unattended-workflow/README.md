@@ -56,7 +56,7 @@
 | 2 | `jq` | hook 解析輸入、輸出 JSON | **完全不會運作**（對話開始時會顯示提示） |
 | 3 | `python3` 或 `python` | 對話紀錄轉 HTML（只用標準庫，不必 `pip install`） | 只有存檔失效，其餘正常 |
 | 4 | `tmux` | `unattended` 指令在背景跑、可以脫離再接上 | 改用 `--no-tmux` 前景執行 |
-| 5 | Claude in Chrome 擴充功能（Chrome 線上應用程式商店搜尋 Claude） | UI 改動的瀏覽器驗證（Web 完成定義、守門員都要求） | 改到 `.vue`、`.tsx` 等畫面檔時守門員會擋一次，Claude 會回報「UI 未經瀏覽器驗證」 |
+| 5 | Claude in Chrome 擴充功能（Chrome 線上應用程式商店搜尋 Claude） | UI 改動的瀏覽器驗證（Web 完成定義、無人值守時的守門員都要求） | 無人值守時改到 `.vue`、`.tsx` 等畫面檔，守門員會擋一次，Claude 會回報「UI 未經瀏覽器驗證」 |
 
 **macOS**：
 
@@ -253,9 +253,13 @@ claude plugin update unattended
 
 ### 3. 完成度守門員（Stop hook）
 
-Claude 想結束回合時攔一次，檢查三件事：
+**只在無人值守模式作動**（0.26.0 起）。互動模式你人在場，有沒有驗過看得到，
+「改 UI 要開瀏覽器、改 API 要打 endpoint」交給注入的準則，守門員整支不跑——
+它掃的是整場對話，以前前面改過一次畫面沒開瀏覽器，之後每一輪結束都會被擋一次。
 
-**一、測試與型別（只在無人值守模式）**。支援多種語言，並且**認得 monorepo**——
+無人值守時，Claude 想結束回合時攔一次，檢查三件事：
+
+**一、測試與型別**。支援多種語言，並且**認得 monorepo**——
 它會從這次改動的檔案往上找最近的專案根，只跑被影響到的那些：
 
 | 偵測到 | 執行 |
@@ -267,11 +271,9 @@ Claude 想結束回合時攔一次，檢查三件事：
 
 改 `frontend/` 不會被 `backend/` 的失敗連累，反之亦然。
 
-兩個省時間的規則：
+省時間的規則：
 
-- **互動模式不跑測試。** 你人在場，每個回合結束都等整套測試跑完太浪費，
-  而且常常是「先改一半、還不想測」。第二、三項照樣檢查（幾乎零成本）。
-- **無人值守時，agent 已經跑過就不重跑。** 最後一次改這個專案的檔案之後，
+- **agent 已經跑過就不重跑。** 最後一次改這個專案的檔案之後，
   agent 自己跑過對應的測試指令、而且沒有失敗，就信任那次結果。
   指令裡有 `|` 或 `;` 的不算——`pytest | tail -20` 的 exit code 是 `tail` 的，
   測試失敗也會看起來成功。
@@ -566,7 +568,7 @@ plugin 本身沒有為此新增功能。多數 side project 其實不值得拆�
 hooks/
   session-start.sh        注入常駐準則 + 偵測無人值守模式
   guard.sh                PreToolUse：攔 git push、down -v、無人值守時在 main 上 commit
-  verify-gate.sh          Stop：測試沒綠、UI 沒驗過就擋
+  verify-gate.sh          Stop：無人值守時，測試沒綠、UI 沒驗過就擋
   archive-transcript.sh   Stop：更新這場對話的 HTML／SessionEnd：整個專案重掃
 commands/
   spec.md                 /unattended:spec

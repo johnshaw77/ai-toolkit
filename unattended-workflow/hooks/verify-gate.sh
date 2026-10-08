@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Stop hook：完成度守門員。
 #
-# 只在「這場對話真的改過檔案」時作動，然後檢查兩件事：
-#   1. 被改到的每個子專案，測試與型別檢查都要過（**只在無人值守模式**）
-#   2. 改了 UI 就要開過瀏覽器；改了 API 就要真的打過 endpoint（兩種模式都查）
+# **只在無人值守模式作動**（.claude/UNATTENDED 存在）。互動模式整支直接放行：
+# 使用者在場，有沒有驗過他看得到；而這支掃的是整場 transcript，前面改過一次
+# 畫面沒開瀏覽器，之後每一輪結束都會被擋一次，連純問答的回合也是。
+# 「改 UI 要開瀏覽器、改 API 要打 endpoint」在互動模式交給 session-start 注入的準則。
 #
-# 第 1 項在互動模式不跑：使用者在場，每個回合結束都等整套測試跑完太浪費，
-# 而且互動時常常是「先改一半、還不想測」。第 2 項只是掃 transcript，幾乎零成本，
-# 而且是測試抓不到的東西，所以一直保留。
+# 無人值守時，只在「這場對話真的改過檔案」時作動，然後檢查兩件事：
+#   1. 被改到的每個子專案，測試與型別檢查都要過
+#   2. 改了 UI 就要開過瀏覽器；改了 API 就要真的打過 endpoint
 #
 # 無人值守時也不盲目重跑：agent 在最後一次改檔之後已經自己跑過測試、而且成功，
 # 就信任那次結果（見 already_ran）。
@@ -30,6 +31,9 @@ j() { printf '%s' "$input" | jq -r "$1" 2>/dev/null; }
 
 cwd=$(j '.cwd // ""')
 [ -n "$cwd" ] && cd "$cwd" 2>/dev/null || exit 0
+
+# 互動模式整支不跑（見檔頭）
+[ -f .claude/UNATTENDED ] || exit 0
 
 block() { jq -n --arg r "$1" '{decision:"block", reason:$r}' >&3; exit 0; }
 
@@ -81,7 +85,12 @@ tool_calls=$(jq_tool_use '.name + " " + ((.input.command // "") | tostring)')
 # 以 141 結束，在 pipefail 下整條 pipeline 判定失敗，`&& x=1` 不會執行。
 # 長 session 的 tool_calls 很容易超過 64KB，結果就是明明開過瀏覽器還被擋。
 ui_touched=0; api_touched=0
-grep -qiE '\.(tsx|jsx|vue|svelte|css|scss|less|html|astro)$' <<< "$edited_files" && ui_touched=1
+# Claude Code mod 的 .tsx 是畫在終端機 pane 裡的，沒有網頁可開，瀏覽器驗證
+# 不適用；排除掉，不然每改一次 mod 就被擋一次。兩個位置都算 mod：
+#   ~/.claude/dev-mods/  熱載入監看的資料夾
+#   ~/.claude/mods-src/  還沒載入前先寫在這裡的原始碼
+ui_files=$(grep -vE '/\.claude/(dev-mods|mods-src)/' <<< "$edited_files")
+grep -qiE '\.(tsx|jsx|vue|svelte|css|scss|less|html|astro)$' <<< "$ui_files" && ui_touched=1
 grep -qiE '(^|/)(routes?|router|controllers?|handlers?|api|endpoints?|views|serializers)(/|\.)|(^|/)(urls|main|server|app)\.(py|js|ts)$' \
   <<< "$edited_files" && api_touched=1
 
@@ -107,9 +116,6 @@ roots=$(while IFS= read -r f; do
           [ -n "$f" ] && project_root_of "$f"
         done <<< "$edited_files" | sort -u)
 [ -n "$roots" ] || exit 0
-
-unattended=0
-[ -f .claude/UNATTENDED ] && unattended=1
 
 # ---------- agent 自己跑過的測試算不算數 ----------
 # 事件表：每個工具呼叫一行 U（時間、id、名稱、檔案、指令），每個失敗的結果一行 E（id）。
@@ -180,7 +186,6 @@ $out"
 }
 
 skipped=""
-# 互動模式：roots 清單餵空的，整段不跑（見檔頭說明）
 while IFS= read -r root; do
   [ -n "$root" ] || continue
   if [ "$(budget_left)" -lt 15 ]; then
@@ -239,7 +244,7 @@ while IFS= read -r root; do
   fi
 
   rm -f "$tmp"
-done <<< "$([ "$unattended" = "1" ] && printf '%s\n' "$roots")"
+done <<< "$roots"
 
 [ -n "$skipped" ] && block "守門員的時間預算（${BUDGET} 秒）用完了，下面這幾個專案的測試**完全沒跑到**：
 $skipped
