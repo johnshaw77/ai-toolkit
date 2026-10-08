@@ -1,0 +1,6 @@
+{
+  "name": "token-weather",
+  "version": "0.1.0",
+  "description": "提示詞上方的天氣列：用晴朗到「建議盡快壓縮」表示上下文窗口飽和度，附百分比、token 用量與最近 12 輪的微型圖表",
+  "types": "./types/index.d.ts"
+}

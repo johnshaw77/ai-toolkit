@@ -1,5 +1,7 @@
 # Claude Code mods
 
+2026-10-08 起收在 ai-toolkit 的 `mods/`（以 `git subtree` 併入，保留原本的歷史）。舊 repo `johnshaw77/claude-code-mods` 不再更新。
+
 | # | mod | 做什麼 |
 |---:|---|---|
 | 1 | `context-trim` | Bash 輸出超過 400 行／40,000 字時只留頭尾與錯誤行；指令加 `# keep-full` 不剪；compact 時附上保留清單 |
@@ -14,15 +16,21 @@
 | 10 | `todo-rail` | 輸入框上方一排小方塊顯示待辦進度，旁邊寫目前進行中的項目 |
 | 11 | `gate-lights` | 完成定義的三顆燈：測試、型別檢查、瀏覽器驗證 |
 | 12 | `todo-panel` | 把 TodoWrite／Task 清單畫成側欄面板，輸入框上方一行摘要 |
-| 13 | `clean-view` | 簡潔檢視（隱藏工具細節、白話進度清單，`/simple`）＋ Agent Dock（把請求拆給 N 位 helper 的面板，`/dock`）；原始碼在 ai-toolkit repo 的 `mods/clean-view/` |
+| 13 | `clean-view` | 簡潔檢視（隱藏工具細節、白話進度清單，`/simple`）＋ Agent Dock（把請求拆給 N 位 helper 的面板，`/dock`） |
+| 14 | `token-weather` | 提示詞上方的天氣列：用晴朗到「建議盡快壓縮」表示上下文窗口飽和度，附百分比、token 用量與最近 12 輪的微型圖表 |
 
 ## 裝到一台電腦
 
-1. clone 到 `~/.claude/mods`
+1. clone ai-toolkit，把 `~/.claude/mods` 接成指向 `mods/` 的 symlink：
+
+   ```bash
+   ln -s ~/ai-toolkit/mods ~/.claude/mods
+   ```
+
 2. `~/.claude/settings.json` 的 `env` 加上：
 
    ```json
-   "CLAUDE_CODE_PLUGIN_DIRS": "~/.claude/mods/host-badge:~/.claude/mods/context-trim:~/.claude/mods/model-router:~/.claude/mods/office:~/.claude/mods/conveyor:~/.claude/mods/nightshift:~/.claude/mods/mascot:~/.claude/mods/mod-list:~/.claude/mods/done-ding:~/.claude/mods/todo-rail:~/.claude/mods/gate-lights:~/.claude/mods/todo-panel:~/.claude/mods/clean-view"
+   "CLAUDE_CODE_PLUGIN_DIRS": "~/.claude/mods/host-badge:~/.claude/mods/context-trim:~/.claude/mods/model-router:~/.claude/mods/office:~/.claude/mods/conveyor:~/.claude/mods/nightshift:~/.claude/mods/mascot:~/.claude/mods/mod-list:~/.claude/mods/done-ding:~/.claude/mods/todo-rail:~/.claude/mods/gate-lights:~/.claude/mods/todo-panel:~/.claude/mods/clean-view:~/.claude/mods/token-weather"
    ```
 
    （Windows 用 `;` 分隔）

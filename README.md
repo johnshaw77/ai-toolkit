@@ -8,6 +8,7 @@
 | 2 | [`screencast/`](screencast/) | 用 Playwright 操作網頁錄操作教學影片，含假游標與 TTS 旁白 | Claude Code skill |
 | 3 | [`smart-scaffold/`](smart-scaffold/) | 逐步問答式的專案腳手架，問完就生出可以動工的骨架 | 獨立 Python CLI |
 | 4 | [`skills/jnx-explainer/`](skills/jnx-explainer/) | jnxstudio 品牌的繁中解說短片：旁白、BGM、音效，深色 UI 與米白線條兩種風格 | Claude Code skill |
+| 5 | [`mods/`](mods/) | 14 個 Claude Code mod：簡潔檢視與 Agent Dock、吉祥物、待辦面板、上下文天氣列等 | Claude Code mod |
 
 ## 安裝
 
@@ -108,18 +109,27 @@ ln -s ~/ai-toolkit/skills/jnx-explainer ~/.claude/skills/jnx-explainer
 打字音效用的真實鍵盤錄音 `keys.npy` 沒有進版控（授權未確認），沒有它時會自動改用合成的打字聲。
 風格、流程與範本見 [`skills/jnx-explainer/SKILL.md`](skills/jnx-explainer/SKILL.md)。
 
+### 5. mods（Claude Code mod）
+
+```bash
+ln -s ~/ai-toolkit/mods ~/.claude/mods
+```
+
+再把要用的 mod 加進 `~/.claude/settings.json` 的 `env.CLAUDE_CODE_PLUGIN_DIRS`，完整清單與注意事項（`office` 的 sprite 不在版控）見 [`mods/README.md`](mods/README.md)。
+
 ## 這個 repo 的結構
 
 ```
 ai-toolkit/
-├── .claude-plugin/marketplace.json   ← plugin marketplace 清單（目前只有 unattended）
+├── .claude-plugin/marketplace.json   ← plugin marketplace 清單（unattended、clean-view）
 ├── unattended-workflow/              ← plugin 根，自己有 .claude-plugin/plugin.json
 ├── screencast/                       ← skill 根，SKILL.md 在這一層
 ├── smart-scaffold/                   ← Python 套件根
-└── skills/jnx-explainer/             ← skill 根，SKILL.md 在這一層
+├── skills/jnx-explainer/             ← skill 根，SKILL.md 在這一層
+└── mods/                             ← Claude Code mod，每個子目錄一個（~/.claude/mods 指向這裡）
 ```
 
-前三個子目錄是用 `git subtree` 併進來的，各自的 commit 歷史都在
+前三個子目錄與 `mods/`（來自 claude-code-mods）是用 `git subtree` 併進來的，各自的 commit 歷史都在
 （`git log --full-history -- <子目錄>`）。各子目錄有自己的 README 與 CLAUDE.md，
 改動時看那一份。
 
