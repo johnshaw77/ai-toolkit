@@ -5,7 +5,7 @@
 | # | mod | 做什麼 |
 |---:|---|---|
 | 1 | `context-trim` | Bash 輸出超過 400 行／40,000 字時只留頭尾與錯誤行；指令加 `# keep-full` 不剪；compact 時附上保留清單 |
-| 2 | `model-router` | 依 prompt 自動選模型與 effort，子 agent 依類型挑模型；`!opus`／`!sonnet`／`!haiku` 強制指定，`/router` 開關 |
+| 2 | `model-router` | **預設不啟用**。依 prompt 自動選模型與 effort，子 agent 依類型挑模型；`!opus`／`!sonnet`／`!haiku` 強制指定，`/router` 開關。實測 26 場對話只降級 20 次（對話超過 150k tokens 就不降、問句含動作字也不降），換模型還要重寫快取；子 agent 省錢 clean-view 的 Agent Dock 已經做了，所以沒放進下面的設定 |
 | 3 | `office` | `/office` 像素辦公室、`/sea` 海上冒險 pane，跟著 Claude 的工作狀態變化 |
 | 4 | `conveyor` | Claude 工作時的搬運動畫：黃昏城市裡，token 方塊流進正在處理的檔案，機器人小搬推著推車來回走 |
 | 5 | `host-badge` | 輸入框上方的機器名稱色塊（例如 `MBP`），多台電腦跑 Claude 時一眼分辨在哪台；`/badge <名稱>` 當下改名（寫回設定檔）；名稱與顏色也可在 `~/.claude/host-badge.json` 設定 `label`、`color` |
@@ -30,7 +30,7 @@
 2. `~/.claude/settings.json` 的 `env` 加上：
 
    ```json
-   "CLAUDE_CODE_PLUGIN_DIRS": "~/.claude/mods/host-badge:~/.claude/mods/context-trim:~/.claude/mods/model-router:~/.claude/mods/office:~/.claude/mods/conveyor:~/.claude/mods/nightshift:~/.claude/mods/mascot:~/.claude/mods/mod-list:~/.claude/mods/done-ding:~/.claude/mods/todo-rail:~/.claude/mods/gate-lights:~/.claude/mods/todo-panel:~/.claude/mods/clean-view:~/.claude/mods/token-weather"
+   "CLAUDE_CODE_PLUGIN_DIRS": "~/.claude/mods/host-badge:~/.claude/mods/context-trim:~/.claude/mods/office:~/.claude/mods/conveyor:~/.claude/mods/nightshift:~/.claude/mods/mascot:~/.claude/mods/mod-list:~/.claude/mods/done-ding:~/.claude/mods/todo-rail:~/.claude/mods/gate-lights:~/.claude/mods/todo-panel:~/.claude/mods/clean-view:~/.claude/mods/token-weather"
    ```
 
    （Windows 用 `;` 分隔）
