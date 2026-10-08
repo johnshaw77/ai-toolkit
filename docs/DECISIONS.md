@@ -505,3 +505,51 @@ helper，完成時就對不到卡片了，舊工作的總結也看不到。
 ### 順手修好 ccdash/CLAUDE.md 的格式
 
 被跳脫的程式碼區塊、被自動轉成錯誤連結的 `ccdash.py` 和 `README.md`、網址多出來的反引號，都一起改回來了。這些地方本來就要配合這次修改重寫。
+
+## 2026-10-08　speed-explainer：改成本機可跑、整理版控範圍
+
+### 路徑以 py 檔所在資料夾為基準
+
+7 個專案的 `build.py`、`audio.py`、`getsfx.py` 原本寫死雲端路徑（`/home/claude/…`、`/mnt/user-data/…`、Linux Chromium、Linux 字型）。現在開頭統一用 `D=os.path.dirname(os.path.abspath(__file__))+'/'`，旁白和字型都用相對路徑 `../../`。這樣不管資料夾搬到哪裡都能跑，不必再設環境變數。
+
+**代價**：`_cloud-export/<name>-fast/` 和 `speed-explainer/<name>/` 的相對位置被綁死，搬動其中一邊就得跟著改。
+
+### 字型改用 Noto Sans CJK TC 的單檔 OTF，由 setup.sh 下載
+
+原本讀系統的 `NotoSansCJK-*.ttc` 索引 3，Mac 上沒有這個檔。現在改從 notofonts/noto-cjk 下載 TC 的 SubsetOTF（Bold／Medium 各約 6 MB）放到 `fonts/`，不進版控。子集化後是 CFF 格式，但副檔名沿用 `.ttf`，這樣 `head.part` 的 `@font-face` 不用改，Chrome 會自己判斷格式。
+
+### keys.npy 先不進版控
+
+repo 有推到 GitHub，而這份鍵盤錄音的授權還沒確認，所以先排除。代價是 clone 下來的人跑 `audio.py` 會失敗，要等授權確認後再決定要不要加回來，或改成合成的打字音。
+
+## 2026-10-08　speed-explainer 與 explainer-motion-graphics 合併成 jnx-explainer
+
+使用者定了 4 件事：合併、名稱用 `jnx-explainer`、兩種風格都要 jnxstudio 開場與結尾、都用 edge-tts、都要音效。下面是我自己決定的部分。
+
+### 一條製作管線，兩套 head.part
+
+兩種風格共用 speed-explainer 原本的管線（`build.py` → `getsfx.py` → `audio.py` → HyperFrames）。風格的差別只在 `head.part`（配色、helper、動作詞彙）和 `body.part`。原本 explainer-motion-graphics 用 `hyperframes tts` + `transcribe` 對齊旁白，這條路線拿掉了，因為使用者指定用 edge-tts。它的 style guide、版面規則和動作詞彙都搬進了 `styles/line-icon.md`。
+
+**代價**：line-icon 原本「全走 HyperFrames CLI、不用 Python」的簡單性沒了，現在也要 `.venv`。
+
+### 每個專案自帶旁白（`<專案>/vo/`）
+
+原本旁白放在 `speed-explainer/<x>/`，跟專案分開，sso-fast 還對應到 `fast/`。現在搬進各專案的 `vo/`，`audio.py` 讀 `D+'vo/v{i}.mp3'`，複製一個資料夾就能帶走整支影片。
+
+### templates/ 與 examples/ 分開
+
+`templates/dark-ui` 是 stepper 的乾淨副本，跟 `examples/stepper` 重複，大約 1 MB。保留重複是為了讓「新影片從 templates 複製」這條規則不會例外。
+
+### line-icon 的調整
+
+- 說明文字灰從 `#8A867C` 改成 `#6E6A61`：原本的灰在米白底上只有 3.19:1，HyperFrames 的對比檢查會擋下。
+- 章節膠囊的 ghost 改成縮小加底色轉灰（`V.ghostPill`），不做淡出：淡到 0.3 時白字對比只剩 1.6:1，check 會報 error。
+- 字標另做深字版：原圖「jnx」是白字，放在米白底上看不見。
+
+### keys.npy 不在時改用合成打字聲
+
+這份檔案不進版控（授權未確認），所以 clone 下來的人原本跑 `audio.py` 會直接失敗。現在檔案不在時，改用原本就有的 `key_old()` 合成音。
+
+### 接受 lint 的 composition_file_too_large
+
+dark-ui 的 `index.html` 有 479 行。拆成 sub-composition 會打散 head.part／body.part 的分工，所以這個 warning 刻意保留。

@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "Poppins"; src: url("assets/fonts/Poppins-Medium.ttf"); font-weight: 500; }
+      @font-face { font-family: "Poppins"; src: url("assets/fonts/Poppins-Bold.ttf"); font-weight: 700; }
+      @font-face { font-family: "Mono"; src: url("assets/fonts/DejaVuSansMono.ttf"); font-weight: 400; }
+      @font-face { font-family: "TC"; src: url("assets/fonts/TCMed.ttf"); font-weight: 500; }
+      @font-face { font-family: "TC"; src: url("assets/fonts/TCBold.ttf"); font-weight: 700; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #F2F0EB; }
+      #root { position: relative; width: 100%; height: 100%; background: #F2F0EB; }
+      #scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+      .ln { fill: none; stroke: #BDB8AC; stroke-width: 3; stroke-linecap: round; }
+      .al { fill: none; stroke: #C96442; stroke-width: 4; stroke-linecap: round; }
+      .pt { font-family: "Poppins", "TC", sans-serif; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+      .ptl { font-family: "Poppins", "TC", sans-serif; font-weight: 700; text-anchor: start; dominant-baseline: central; }
+      .cap { font-family: "Poppins", "TC", sans-serif; font-weight: 500; text-anchor: middle; dominant-baseline: central; letter-spacing: 0.18em; }
+      .ico { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="__TOTAL__" data-width="1920" data-height="1080">
+      <svg id="scene" viewBox="0 0 1600 900" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="sh" x="-30%" y="-30%" width="160%" height="160%">
+            <feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#000000" flood-opacity="0.08" />
+          </filter>
+          <linearGradient id="redG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff405b" /><stop offset="1" stop-color="#e20d32" /></linearGradient>
+          <clipPath id="ccp"><circle id="cc" cx="800" cy="330" r="0" /></clipPath>
+          <mask id="irisM" maskUnits="userSpaceOnUse" x="0" y="0" width="1600" height="900"><rect x="0" y="0" width="1600" height="900" fill="#fff" /><circle id="hole" cx="800" cy="330" r="0" fill="#000" /></mask>
+          <clipPath id="wmClip"><rect id="wmR" x="450" y="500" width="0" height="200" /></clipPath>
+          <image id="wmImg" width="700" height="__WMH__" href="__WM__" />
+        </defs>
+        <g id="world"></g>
+        <g id="trn" mask="url(#irisM)"><rect x="0" y="0" width="1600" height="900" fill="url(#redG)" clip-path="url(#ccp)" /></g>
+      </svg>
+      <audio id="vo" src="assets/vo.wav" data-start="0" data-duration="__TOTAL__" data-track-index="1" data-volume="1"></audio>
+      <audio id="bgm" src="assets/bgm.wav" data-start="0" data-duration="__TOTAL__" data-track-index="2" data-volume="0.22"></audio>
+      <audio id="sfx" src="assets/sfx.wav" data-start="0" data-duration="__TOTAL__" data-track-index="3" data-volume="0.75"></audio>
+    </div>
+
+    <script>
+      var TOTAL = __TOTAL__;
+      var SC = __SC__;
+      var NS = "http://www.w3.org/2000/svg";
+      /* line-icon 風格配色：米白底、近黑線條、單一強調色 */
+      var C = { bg: "#F2F0EB", ink: "#1F1F1F", accent: "#C96442", iconFill: "#E8E4D6", dim: "#6E6A61", line: "#BDB8AC", box: "#FFFFFF", brand: "#e8123a" };
+      var tl = gsap.timeline({ paused: true });
+      window.SFX = [];
+      function sfx(k, t, d) { window.SFX.push({ k: k, t: t, d: d || 0 }); }
+
+      /* Lucide 線性 icon（24 格） */
+      var IC = {
+        check: '<path d="M20 6 9 17l-5-5"/>',
+        code: '<path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/>',
+        shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
+        flask: '<path d="M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2"/><path d="M6.453 15h11.094"/><path d="M8.5 2h7"/>',
+        bug: '<path d="m8 2 1.88 1.88"/><path d="M14.12 3.88 16 2"/><path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1"/><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/><path d="M12 20v-9"/><path d="M6.53 9C4.6 8.8 3 7.1 3 5"/><path d="M6 13H2"/><path d="M3 21c0-2.1 1.7-3.9 3.8-4"/><path d="M20.97 5c0 2.1-1.6 3.8-3.5 4"/><path d="M22 13h-4"/><path d="M17.2 17c2.1.1 3.8 1.9 3.8 4"/>',
+        list: '<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>',
+        server: '<rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/>'
+      };
+      function el(tag, attrs, parent) {
+        var e = document.createElementNS(NS, tag);
+        for (var k in attrs) e.setAttribute(k, attrs[k]);
+        (parent || document.getElementById("world")).appendChild(e);
+        return e;
+      }
+      function grp(id, parent) { return el("g", { id: id }, parent); }
+      function txt(id, x, y, s, cls, fill, size, parent, anchor) {
+        var t = el("text", { id: id, class: cls, x: x, y: y, fill: fill, "font-size": size }, parent);
+        if (anchor) t.setAttribute("text-anchor", anchor);
+        t.textContent = s; return t;
+      }
+      function icon(parent, name, x, y, sc, color, sw) {
+        var g = el("g", { class: "ico", transform: "translate(" + x + " " + y + ") scale(" + sc + ")", "stroke-width": sw }, parent);
+        g.innerHTML = IC[name]; gsap.set(g, { stroke: color }); return g;
+      }
+      /* icon 容器：白色圓角方塊 120×120，icon 放大 3 倍；外層 g 不帶 transform，可直接 tween scale */
+      function node(id, cx, cy, name, label, parent) {
+        var g = grp(id, parent);
+        el("rect", { class: "face", x: cx - 60, y: cy - 60, width: 120, height: 120, rx: 26, fill: C.box, filter: "url(#sh)" }, g);
+        icon(g, name, cx - 36, cy - 36, 3, C.ink, 1.35);
+        if (label) txt(id + "L", cx, cy + 98, label, "cap", C.dim, 22, g);
+        gsap.set(g, { opacity: 0 });
+        return g;
+      }
+      /* 打勾標章：強調色圓 + 白勾，掛在 node 右上角 */
+      function mark(id, cx, cy, parent) {
+        var g = grp(id, parent);
+        el("circle", { cx: cx, cy: cy, r: 20, fill: C.accent }, g);
+        icon(g, "check", cx - 12, cy - 12, 1, "#ffffff", 3.2);
+        gsap.set(g, { opacity: 0 });
+        return g;
+      }
+      /* 膠囊標籤：全圓角，深色或強調色底白字 */
+      function pill(id, cx, cy, text, fill, size, parent) {
+        var g = grp(id, parent), w = Math.max(160, text.length * (size || 28) * 0.95 + 64);
+        el("rect", { x: cx - w / 2, y: cy - 30, width: w, height: 60, rx: 30, fill: fill || C.ink }, g);
+        txt(id + "T", cx, cy + 1, text, "pt", "#ffffff", size || 28, g);
+        gsap.set(g, { opacity: 0 });
+        return g;
+      }
+      function prep(sel) { var e = document.querySelector(sel), L = e.getTotalLength(); gsap.set(e, { strokeDasharray: L + " " + (L + 40), strokeDashoffset: L + 8 }); }
+      function line(id, d, cls, parent) { var p = el("path", { id: id, class: cls || "ln", d: d }, parent); prep("#" + id); return p; }
+
+      /* ---------- 動作詞彙（每個 helper 同時記錄音效） ---------- */
+      var center = { transformOrigin: "50% 50%" };
+      var V = {
+        popIn: function (s, at, quiet) { tl.fromTo(s, Object.assign({ opacity: 0, scale: 0.85 }, center), { opacity: 1, scale: 1, duration: 0.3, ease: "back.out(1.7)", immediateRender: false }, at); if (!quiet) sfx("pop", at); },
+        fadeIn: function (s, at) { tl.fromTo(s, { opacity: 0, y: 6 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out", immediateRender: false }, at); },
+        stagger: function (list, at, gap) { list.forEach(function (s, i) { V.popIn(s, at + i * (gap || 0.1)); }); },
+        draw: function (s, at, dur) { dur = dur || 0.5; tl.to(s, { strokeDashoffset: 0, duration: dur, ease: "power2.inOut" }, at); sfx("draw", at, dur); },
+        /* 沿路徑移動（用 attribute transform，避免 GSAP 疊加 transform） */
+        travel: function (s, pathSel, at, dur) {
+          dur = dur || 0.6;
+          var p = document.querySelector(pathSel), L = p.getTotalLength(), e = document.querySelector(s), o = { u: 0 };
+          tl.to(o, { u: 1, duration: dur, ease: "power2.inOut", onUpdate: function () {
+            var pt = p.getPointAtLength(o.u * L); e.setAttribute("transform", "translate(" + pt.x + " " + pt.y + ")");
+          } }, at);
+          sfx("travel", at, dur);
+        },
+        swap: function (a, b, at) { tl.to(a, Object.assign({ opacity: 0, scale: 0.8, duration: 0.2, ease: "power1.in" }, center), at); V.popIn(b, at + 0.15); },
+        tick: function (s, at) { V.popIn(s, at, true); sfx("tick", at); },
+        fill: function (s, at, dur) { tl.to(s, { scaleX: 1, duration: dur || 0.8, ease: "power1.inOut" }, at); sfx("fill", at, dur || 0.8); },
+        type: function (sel, text, at, per) {
+          per = per || 0.03; var e = document.querySelector(sel), o = { n: 0 };
+          tl.to(o, { n: text.length, duration: text.length * per, ease: "none", onUpdate: function () { e.textContent = text.slice(0, Math.round(o.n)); } }, at);
+          for (var i = 0; i < text.length; i++) sfx("key", at + i * per);
+        },
+        /* 講完的概念縮到 55%、移到 (x,y) 附近、變淡 */
+        ghost: function (s, at, dx, dy) { tl.to(s, Object.assign({ x: dx, y: dy, scale: 0.55, opacity: 0.3, duration: 0.5, ease: "power2.inOut" }, center), at); },
+        /* 膠囊的 ghost：變淡會讓白字對比不足（check 會擋），改成縮小 + 底色轉灰，字保持可讀 */
+        ghostPill: function (s, at, dx, dy) {
+          tl.to(s, Object.assign({ x: dx, y: dy, scale: 0.55, duration: 0.5, ease: "power2.inOut" }, center), at);
+          tl.to(s + " rect", { fill: C.dim, duration: 0.5 }, at);
+        },
+        clear: function (list, at) { tl.to(list, { opacity: 0, duration: 0.25 }, at); },
+        show: function (s, at) { tl.set(s, { opacity: 1 }, at); },
+        hide: function (s, at) { tl.set(s, { opacity: 0 }, at); }
+      };

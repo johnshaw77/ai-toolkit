@@ -1,0 +1,139 @@
+
+      function hid(l) { l.forEach(function (s) { if (document.querySelector(s)) gsap.set(s, { opacity: 0 }); }); }
+      var G = []; for (var gi = 0; gi <= 4; gi++) { G[gi] = grp("g" + gi); gsap.set(G[gi], { opacity: 0 }); }
+
+      /* ===== 品牌 logo（由 favicon.svg 重建） ===== */
+      function logo(id, cx, cy, size, parent) {
+        var g = grp(id, parent), s = size / 128;
+        var inner = el("g", { transform: "translate(" + (cx - size / 2) + " " + (cy - size / 2) + ") scale(" + s + ")" }, g);
+        el("circle", { cx: 64, cy: 64, r: 57, fill: "url(#redG)" }, inner);
+        el("circle", { cx: 64, cy: 64, r: 55.5, fill: "none", stroke: "#fff", "stroke-opacity": 0.92, "stroke-width": 2 }, inner);
+        var orb = el("g", { class: "orb", fill: "none", stroke: "#fff", "stroke-width": 5, "stroke-linecap": "round", "stroke-linejoin": "round" }, inner);
+        [-32, 32, 90].forEach(function (r) { el("ellipse", { class: "oe", cx: 64, cy: 64, rx: 33, ry: 13, transform: "rotate(" + r + " 64 64)" }, orb); });
+        el("circle", { class: "od", cx: 64, cy: 64, r: 7, fill: "#fff", stroke: "none" }, orb);
+        el("circle", { class: "od", cx: 91, cy: 48, r: 4, fill: "#fff", stroke: "none" }, orb);
+        el("circle", { cx: 105, cy: 24, r: 4, fill: "#fff" }, inner);
+        return g;
+      }
+
+      /* ===== S0 : 品牌開場 ===== */
+      logo("lg0", 800, 330, 230, G[0]);
+      var wm0 = grp("wm0", G[0]); el("use", { href: "#wmImg", x: 450, y: 530 }, wm0); wm0.setAttribute("clip-path", "url(#wmClip)");
+      hid(["#lg0"]);
+      document.querySelectorAll("#lg0 .oe").forEach(function (e) { var L = e.getTotalLength(); gsap.set(e, { strokeDasharray: L + " " + (L + 40), strokeDashoffset: L + 8 }); });
+      gsap.set("#lg0 .od", { opacity: 0 });
+
+      /* ===== S1 : 標題 ===== */
+      txt("t1", 800, 400, "安全上線？", "pt", C.ink, 110, G[1]); hid(["#t1"]);
+      var chap = pill("chap", 800, 560, "上線檢查", C.accent, 34);   /* 章節膠囊：S1 出現，S2 起 ghost 到左上 */
+
+      /* ===== S2–S4 : 流程（主線沿 y=450，左進右出） ===== */
+      var Y = 450, XA = 250, XG = 650, XC = 1000, XS = 1360, YC = [260, 450, 640];
+      line("l0", "M" + (XA + 60) + " " + Y + " H" + (XG - 60), "ln", G[2]);
+      YC.forEach(function (y, k) {
+        line("b" + k, "M" + (XG + 60) + " " + Y + " C" + (XG + 170) + " " + Y + " " + (XC - 170) + " " + y + " " + (XC - 60) + " " + y, "ln", G[2]);
+        line("m" + k, "M" + (XC + 60) + " " + y + " C" + (XC + 180) + " " + y + " " + (XS - 180) + " " + Y + " " + (XS - 60) + " " + Y, "ln", G[2]);
+      });
+      line("a0", "M" + (XG + 60) + " " + Y + " H" + (XC - 60), "al", G[2]);
+      line("a1", "M" + (XC + 60) + " " + Y + " H" + (XS - 60), "al", G[2]);
+      el("path", { id: "runP", d: "M" + (XA + 60) + " " + Y + " H" + (XS - 60), fill: "none", stroke: "none" }, G[2]);
+      node("nA", XA, Y, "code", "APP", G[2]);
+      node("nG", XG, Y, "shield", "閘門", G[2]);
+      [["flask", "測試"], ["bug", "漏洞"], ["list", "規格"]].forEach(function (c, k) { node("nC" + k, XC, YC[k], c[0], c[1], G[2]); mark("mk" + k, XC + 52, YC[k] - 52, G[2]); });
+      node("nS", XS, Y, "server", "正式環境", G[2]);
+      mark("mkS", XS + 52, Y - 52, G[2]);
+      pill("live", XS, 640, "已上線", C.accent, 28, G[2]);
+      var dot = el("circle", { id: "dot", cx: 0, cy: 0, r: 10, fill: C.accent, transform: "translate(" + (XA + 60) + " " + Y + ")" }, G[2]); gsap.set(dot, { opacity: 0 });
+
+      /* ===== S5 : 收尾標語 ===== */
+      txt("h1", 800, 330, "每一次上線", "pt", C.ink, 120, G[3]); hid(["#h1"]);
+      var hl = el("rect", { id: "hl", x: 300, y: 430, width: 1000, height: 190, rx: 26, fill: C.accent }, G[3]); gsap.set(hl, { scaleX: 0, transformOrigin: "0% 50%" });
+      txt("h2", 800, 528, "都有把關", "pt", "#ffffff", 100, G[3]); hid(["#h2"]);
+
+      /* ===== S6 : 品牌結尾 ===== */
+      logo("lg9", 800, 340, 200, G[4]);
+      var wm9 = grp("wm9", G[4]); el("use", { href: "#wmImg", transform: "translate(500 540) scale(0.857)" }, wm9);
+      hid(["#lg9", "#wm9"]);
+
+      /* ================= timeline ================= */
+      var T = function (n) { return SC[n - 1]; };
+      var t;
+      function spin(sel, to, at, dur, ease) { var e = document.querySelector(sel), o = { a: 0 }; tl.to(o, { a: to, duration: dur, ease: ease, onUpdate: function () { e.setAttribute("transform", "rotate(" + o.a + " 64 64)"); } }, at); }
+      function iris(at, cx, cy) {
+        tl.set(["#cc", "#hole"], { attr: { cx: cx, cy: cy, r: 0 } }, at - 0.01);
+        tl.to("#cc", { attr: { r: 1100 }, duration: 0.5, ease: "power3.in" }, at); sfx("swipe", at);
+      }
+      function irisOpen(at, cx, cy) {
+        tl.set("#hole", { attr: { cx: cx, cy: cy } }, at - 0.01);
+        tl.to("#hole", { attr: { r: 1200 }, duration: 0.55, ease: "power2.out" }, at); sfx("ding", at + 0.15);
+      }
+
+      /* S0 : 品牌開場 */
+      V.show(G[0], 0);
+      V.popIn("#lg0", 0.1, true); sfx("sting", 0.1);
+      document.querySelectorAll("#lg0 .oe").forEach(function (e, n) { tl.to(e, { strokeDashoffset: 0, duration: 0.5, ease: "power2.inOut" }, 0.45 + n * 0.1); });
+      tl.to("#lg0 .od", { opacity: 1, duration: 0.2, stagger: 0.08 }, 0.95);
+      spin("#lg0 .orb", 120, 0.5, 1.9, "power2.inOut");
+      tl.to("#wmR", { attr: { width: 700 }, duration: 0.6, ease: "power3.out" }, 1.0); sfx("pop", 1.0);
+      iris(2.05, 800, 330);
+      V.hide(G[0], 2.55); V.show(G[1], 2.55);
+      irisOpen(2.55, 800, 450);
+
+      /* S1 : 寫好的程式，要怎麼安全上線？ */
+      t = T(1);
+      V.popIn("#t1", t - 0.12);
+      V.popIn(chap, t + 0.6, true); sfx("chime", t + 0.6);
+
+      /* S2 : 先把程式送進檢查閘門 */
+      t = T(2); V.clear("#t1", t); V.show(G[2], t);
+      V.ghostPill("#chap", t, 160 - 800, 80 - 560);
+      V.popIn("#nA", t + 0.2);
+      V.draw("#l0", t + 0.6);
+      V.popIn("#nG", t + 1.0);
+      tl.set(dot, { opacity: 1 }, t + 1.3);
+      (function () {   /* 點只跑 APP → 閘門這段 */
+        var p = document.getElementById("runP"), o = { u: 0 };
+        tl.to(o, { u: 1, duration: 0.6, ease: "power2.inOut", onUpdate: function () { var pt = p.getPointAtLength(o.u * (XG - XA - 120)); dot.setAttribute("transform", "translate(" + pt.x + " " + pt.y + ")"); } }, t + 1.3);
+        sfx("travel", t + 1.3, 0.6);
+      })();
+      tl.set(dot, { opacity: 0 }, t + 1.95);
+
+      /* S3 : 閘門會跑測試、掃描漏洞、比對規格 */
+      t = T(3);
+      [0, 1, 2].forEach(function (k) { V.draw("#b" + k, t + 0.1 + k * 0.1); });
+      V.stagger(["#nC0", "#nC1", "#nC2"], t + 0.5, 0.15);
+      V.tick("#mk0", t + 1.4); V.tick("#mk1", t + 2.0); V.tick("#mk2", t + 2.6);
+
+      /* S4 : 三項都通過，才放行到正式環境 */
+      t = T(4);
+      [0, 1, 2].forEach(function (k) { V.draw("#m" + k, t + 0.1 + k * 0.1); });
+      V.popIn("#nS", t + 0.5);
+      V.draw("#a0", t + 0.8, 0.4); V.draw("#a1", t + 1.25, 0.4);
+      tl.set(dot, { opacity: 1 }, t + 0.8);
+      (function () {
+        var p = document.getElementById("runP"), a = XG + 60 - (XA + 60), b = XS - 60 - (XA + 60), o = { u: 0 };
+        tl.to(o, { u: 1, duration: 0.9, ease: "power2.inOut", onUpdate: function () { var pt = p.getPointAtLength(a + o.u * (b - a)); dot.setAttribute("transform", "translate(" + pt.x + " " + pt.y + ")"); } }, t + 0.8);
+        sfx("travel", t + 0.8, 0.9);
+      })();
+      tl.set(dot, { opacity: 0 }, t + 1.75);
+      V.tick("#mkS", t + 1.8); sfx("ding", t + 1.8);
+      V.popIn("#live", t + 2.1, true); sfx("chime", t + 2.1);
+
+      /* S5 : 每一次上線，都有人把關 → 品牌結尾 */
+      t = T(5); V.hide(G[2], t); V.hide(chap, t); V.show(G[3], t);
+      V.popIn("#h1", t + 0.05);
+      tl.to("#hl", { scaleX: 1, duration: 0.35, ease: "power3.out" }, t + 0.25); sfx("draw", t + 0.25, 0.35);
+      V.popIn("#h2", t + 0.4);
+      iris(t + 3.55, 800, 450);
+      V.hide(G[3], t + 4.05); V.show(G[4], t + 4.05);
+      irisOpen(t + 4.05, 800, 380);
+      V.popIn("#lg9", t + 4.25, true); sfx("sting", t + 4.25);
+      spin("#lg9 .orb", 90, t + 4.25, 2.2, "power1.inOut");
+      V.popIn("#wm9", t + 4.5, true); sfx("pop", t + 4.5);
+
+      tl.set({}, {}, TOTAL);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

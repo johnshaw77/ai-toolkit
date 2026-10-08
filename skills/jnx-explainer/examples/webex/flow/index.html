@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "Poppins"; src: url("assets/fonts/Poppins-Medium.ttf"); font-weight: 500; }
+      @font-face { font-family: "Poppins"; src: url("assets/fonts/Poppins-Bold.ttf"); font-weight: 700; }
+      @font-face { font-family: "Mono"; src: url("assets/fonts/DejaVuSansMono.ttf"); font-weight: 400; }
+      @font-face { font-family: "TC"; src: url("assets/fonts/TCMed.ttf"); font-weight: 500; }
+      @font-face { font-family: "TC"; src: url("assets/fonts/TCBold.ttf"); font-weight: 700; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #0e0e10; }
+      #root { position: relative; width: 100%; height: 100%; background: #0e0e10; }
+      #scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+      .ln { fill: none; stroke: #34343a; stroke-width: 3; }
+      .gl { fill: none; stroke: #4ade80; stroke-width: 4; }
+      .mono { font-family: "Mono", "TC", monospace; dominant-baseline: central; }
+      .pt { font-family: "Poppins", "TC", sans-serif; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+      .ptl { font-family: "Poppins", "TC", sans-serif; font-weight: 700; text-anchor: start; dominant-baseline: central; }
+      .ico { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="34.85" data-width="1920" data-height="1080">
+      <svg id="scene" viewBox="0 0 1600 900" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="sh" x="-30%" y="-30%" width="160%" height="160%">
+            <feDropShadow dx="0" dy="6" stdDeviation="9" flood-color="#000000" flood-opacity="0.45" />
+          </filter>
+        </defs>
+        <g id="world"></g>
+      </svg>
+      <audio id="vo" src="assets/vo.wav" data-start="0" data-duration="34.85" data-track-index="1" data-volume="1"></audio>
+      <audio id="bgm" src="assets/bgm.wav" data-start="0" data-duration="34.85" data-track-index="2" data-volume="0.22"></audio>
+      <audio id="sfx" src="assets/sfx.wav" data-start="0" data-duration="34.85" data-track-index="3" data-volume="0.75"></audio>
+    </div>
+
+    <script>
+      var TOTAL = 34.85;
+      var SC = [0.0, 4.14, 8.04, 11.388, 14.568, 17.676, 21.936, 26.676, 29.952];
+      var NS = "http://www.w3.org/2000/svg";
+      var C = { card: "#19191c", edge: "#2c2c31", track: "#2a2a30", text: "#e8e6e3", dim: "#9a9aa3",
+                orange: "#e0775b", green: "#4ade80", red: "#f4606c", blue: "#5b9cf5", yellow: "#f5d94a", amber: "#f5a623", grey: "#4a4a52" };
+      var tl = gsap.timeline({ paused: true });
+      window.SFX = [];
+      function sfx(k, t, d) { window.SFX.push({ k: k, t: t, d: d || 0 }); }
+
+      var IC = {
+        check: '<path d="M20 6 9 17l-5-5"/>',
+        x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+        list: '<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>',
+        flask: '<path d="M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2"/><path d="M6.453 15h11.094"/><path d="M8.5 2h7"/>',
+        box: '<path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><path d="m3.3 7 7.703 4.734a2 2 0 0 0 1.994 0L20.7 7"/><path d="m7.5 4.27 9 5.15"/>',
+        rocket: '<path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>',
+        branch: '<line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>',
+        undo: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
+        warn: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>'
+      };
+      function el(tag, attrs, parent) {
+        var e = document.createElementNS(NS, tag);
+        for (var k in attrs) e.setAttribute(k, attrs[k]);
+        (parent || document.getElementById("world")).appendChild(e);
+        return e;
+      }
+      function grp(id, parent) { return el("g", { id: id }, parent); }
+      function txt(id, x, y, s, cls, fill, size, parent, anchor) {
+        var t = el("text", { id: id, class: cls, x: x, y: y, fill: fill, "font-size": size }, parent);
+        if (anchor) t.setAttribute("text-anchor", anchor);
+        t.textContent = s; return t;
+      }
+      function icon(parent, name, x, y, sc, color, sw, cls) {
+        var g = el("g", { class: "ico " + (cls || ""), transform: "translate(" + x + " " + y + ") scale(" + sc + ")", "stroke-width": sw }, parent);
+        g.innerHTML = IC[name]; gsap.set(g, { stroke: color }); return g;
+      }
+      /* round status badge: ring + base icon + overlay icons */
+      function badge(id, cx, cy, base, color, parent) {
+        var g = grp(id, parent);
+        var ring = el("circle", { class: "ring", cx: cx, cy: cy, r: 24, fill: C.card, "stroke-width": 3.5 }, g);
+        gsap.set(ring, { stroke: color });
+        icon(g, base, cx - 13, cy - 13, 1.08, color, 2.4, "base");
+        return g;
+      }
+      function overlay(g, cx, cy, name, color, cls) { var i = icon(g, name, cx - 13, cy - 13, 1.08, color, 2.6, cls); gsap.set(i, { opacity: 0 }); return i; }
+      function mascot(id, cx, cy, parent) {
+        var g = grp(id, parent);
+        el("circle", { cx: cx, cy: cy, r: 62, fill: "none", stroke: C.edge, "stroke-width": 2.5 }, g);
+        var orb = el("g", {}, g); el("circle", { cx: cx + 62, cy: cy, r: 6, fill: C.orange }, orb);
+        var m = el("g", { transform: "translate(" + (cx - 27) + " " + (cy - 24) + ")" }, g), s = 5;
+        function px(x, y, w, h, f) { el("rect", { x: x * s, y: y * s, width: w * s, height: h * s, fill: f }, m); }
+        px(2, 0, 1, 1, C.orange); px(8, 0, 1, 1, C.orange); px(0, 1, 11, 7, C.orange);
+        px(3, 3, 1, 2, "#1a1210"); px(7, 3, 1, 2, "#1a1210"); px(4, 6, 3, 1, "#1a1210"); px(2, 8, 2, 1, C.orange); px(7, 8, 2, 1, C.orange);
+        tl.to(orb, { rotation: 360 * (TOTAL / 3.2), svgOrigin: cx + " " + cy, ease: "none", duration: TOTAL }, 0);
+        return g;
+      }
+      function pill(id, cx, cy, w, text, fill, color, size, parent) {
+        var g = grp(id, parent);
+        el("rect", { x: cx - w / 2, y: cy - 22, width: w, height: 44, rx: 22, fill: fill, stroke: color, "stroke-width": 2 }, g);
+        txt(id + "T", cx, cy + 1, text, "mono", color, size || 19, g, "middle");
+        return g;
+      }
+      function counter(id, x, y, label, parent) {
+        var g = grp(id, parent);
+        txt(id + "L", x, y, label, "mono", C.dim, 22, g);
+        var v = txt(id + "V", x + 24 + label.length * 13.2, y, "0", "mono", C.text, 30, g); v.setAttribute("font-weight", "bold");
+        return { g: g, v: v };
+      }
+
+      /* ---------- motion vocabulary (each helper also logs its sound) ---------- */
+      var V = {
+        pop: function (s, at, quiet) { tl.fromTo(s, { opacity: 0, scale: 0.8, transformOrigin: "50% 50%" }, { opacity: 1, scale: 1, duration: 0.28, ease: "back.out(2)", immediateRender: false }, at); if (!quiet) sfx("pop", at); },
+        fade: function (s, at) { tl.fromTo(s, { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.25, ease: "power2.out", immediateRender: false }, at); sfx("pop", at); },
+        draw: function (s, at, dur) { tl.to(s, { strokeDashoffset: 0, duration: dur, ease: "power2.inOut" }, at); sfx("draw", at, dur); },
+        stroke: function (s, to, at, kind) { tl.to(s, { stroke: to, duration: 0.25, ease: "power1.inOut" }, at); if (kind) sfx(kind, at); },
+        fillc: function (s, to, at) { tl.to(s, { fill: to, duration: 0.25, ease: "power1.inOut" }, at); },
+        show: function (s, at) { tl.set(s, { opacity: 1 }, at); },
+        hide: function (s, at) { tl.set(s, { opacity: 0 }, at); },
+        shake: function (s, at) { tl.to(s, { x: 8, duration: 0.05, yoyo: true, repeat: 5, ease: "none" }, at); tl.set(s, { x: 0 }, at + 0.32); sfx("warn", at); },
+        /* progress bar: scaleX 0 -> to, color blue while running, then final color */
+        bar: function (s, at, dur, to, run, done) {
+          tl.set(s, { fill: run }, at);
+          tl.to(s, { scaleX: to, duration: dur, ease: "power1.inOut" }, at);
+          if (done) tl.to(s, { fill: done, duration: 0.2 }, at + dur);
+          sfx("fill", at, dur);
+        },
+        resetBar: function (s, at) { tl.to(s, { scaleX: 0, duration: 0.2, ease: "power2.in" }, at); },
+        /* icon swap inside a badge: base out, overlay in, ring + icon recolor */
+        flip: function (id, over, color, at, kind) {
+          V.stroke("#" + id + " .ring", color, at, kind);
+          tl.to("#" + id + " .base", { opacity: 0, duration: 0.15 }, at);
+          tl.to("#" + id + " ." + over, { opacity: 1, stroke: color, duration: 0.2 }, at + 0.05);
+        },
+        unflip: function (id, over, at) {   /* back to the base icon */
+          tl.to("#" + id + " ." + over, { opacity: 0, duration: 0.15 }, at);
+          tl.to("#" + id + " .base", { opacity: 1, duration: 0.15 }, at + 0.05);
+        },
+        swapText: function (a, b, at) { tl.to(a, { opacity: 0, duration: 0.15 }, at); tl.to(b, { opacity: 1, duration: 0.2 }, at + 0.05); },
+        along: function (s, pathSel, at, dur, rev) {
+          var p = document.querySelector(pathSel), L = p.getTotalLength(), e = document.querySelector(s), o = { u: 0 };
+          tl.to(o, { u: 1, duration: dur, ease: "power2.inOut", onUpdate: function () {
+            var pt = p.getPointAtLength((rev ? 1 - o.u : o.u) * L);
+            e.setAttribute("transform", "translate(" + pt.x + " " + pt.y + ")");
+          } }, at);
+          sfx("travel", at, dur);
+        },
+        type: function (sel, text, at, per) {
+          var e = document.querySelector(sel), o = { n: 0 };
+          tl.to(o, { n: text.length, duration: text.length * per, ease: "none", onUpdate: function () { e.textContent = text.slice(0, Math.round(o.n)); } }, at);
+          for (var i = 0; i < text.length; i++) sfx("key", at + i * per);
+        },
+        count: function (c, from, to, at, dur) {
+          var o = { n: from }, n = Math.abs(to - from);
+          tl.to(o, { n: to, duration: dur, ease: "none", onUpdate: function () { c.v.textContent = Math.round(o.n); } }, at);
+          for (var i = 1; i <= n; i++) sfx("tick", at + dur * i / n);
+        }
+      };
+      function prep(sel) { var e = document.querySelector(sel), L = e.getTotalLength(); gsap.set(e, { strokeDasharray: L + " " + (L + 40), strokeDashoffset: L + 8 }); }
+      function line(id, d, cls, parent) { return el("path", { id: id, class: cls || "ln", d: d }, parent); }
+
+      Object.assign(IC, {
+        calendar: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>',
+        hourglass: '<path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/>',
+        door: '<path d="M13 4h3a2 2 0 0 1 2 2v14"/><path d="M2 20h3"/><path d="M13 20h9"/><path d="M10 12v.01"/><path d="M13 4.562v16.157a1 1 0 0 1-1.242.97L5 20V5.562a2 2 0 0 1 1.515-1.94l4-1A2 2 0 0 1 13 4.561Z"/>',
+        video: '<path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/>',
+        user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+        users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/>',
+        crown: '<path d="M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.834 10.246a1 1 0 0 1-.956.734H5.81a1 1 0 0 1-.957-.734L2.02 6.02a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z"/><path d="M5 21h14"/>',
+        shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
+        link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>'
+      });
+      var GREY = "#b0b0b8", STEEL = "#8aa0c8";
+      function hid(list) { list.forEach(function (s) { gsap.set(s, { opacity: 0 }); }); }
+      function fmt(m) { var mi = Math.floor(m + 1e-6), h = Math.floor(mi / 60), mm = mi % 60; return (h < 10 ? "0" : "") + h + ":" + (mm < 10 ? "0" : "") + mm; }
+
+      var gm = grp("gm"), g9 = grp("g9");
+      gsap.set(g9, { opacity: 0 });
+
+      /* ---- timeline bar (top) ---- */
+      var SEG = [{ x: 100, w: 700, c: C.orange, lab: "等待主持人" }, { x: 800, w: 330, c: C.blue, lab: "可先進場" }, { x: 1130, w: 370, c: C.green, lab: "會議進行中" }];
+      var tlb = grp("tlb", gm);
+      SEG.forEach(function (s, i) {
+        el("rect", { x: s.x + 2, y: 142, width: s.w - 4, height: 56, rx: 10, fill: C.track }, tlb);
+        var f = el("rect", { id: "sf" + i, x: s.x + 2, y: 142, width: s.w - 4, height: 56, rx: 10, fill: s.c }, tlb);
+        gsap.set(f, { scaleX: 0, transformOrigin: "0% 50%" });
+        txt("segT" + i, s.x + s.w / 2, 102, s.lab, "pt", s.c, 32, gm); gsap.set("#segT" + i, { opacity: 0 });
+      });
+      var TK = [{ x: 100, t: "09:58", c: "建立" }, { x: 800, t: "11:15", c: "開放進場" }, { x: 1130, t: "11:30", c: "開始" }, { x: 1500, t: "12:00", c: "結束" }];
+      TK.forEach(function (k, i) {
+        var g = grp("tkg" + i, gm);
+        el("path", { d: "M" + k.x + " 208 V228", stroke: C.grey, "stroke-width": 3, fill: "none" }, g);
+        txt("tk" + i, k.x, 258, k.t, "mono", C.text, 30, g, "middle");
+        txt("tkc" + i, k.x, 296, k.c, "pt", C.dim, 24, g);
+        gsap.set(g, { opacity: 0 });
+      });
+      var ph = el("g", { id: "ph" }, gm);
+      el("circle", { cx: 0, cy: 0, r: 17, fill: "#ffffff", stroke: "#0e0e10", "stroke-width": 4 }, ph);
+      gsap.set(ph, { x: 100, y: 170, opacity: 0 });
+      hid(["#tlb"]);
+
+      /* ---- state card (S1-S5) ---- */
+      var gs = grp("gs", gm);
+      el("rect", { id: "gsFace", x: 400, y: 380, width: 800, height: 360, rx: 28, fill: C.card, stroke: GREY, "stroke-width": 4, filter: "url(#sh)" }, gs);
+      var ring = el("circle", { id: "gsRing", cx: 560, cy: 560, r: 92, fill: "#141417", "stroke-width": 7 }, gs); gsap.set(ring, { stroke: GREY });
+      var ST = [{ ic: "calendar", name: "新會議", c: GREY }, { ic: "hourglass", name: "等待主持人", c: C.orange }, { ic: "door", name: "可先進場", c: C.blue }, { ic: "video", name: "會議進行中", c: C.green }];
+      ST.forEach(function (s, i) {
+        var w = el("g", { id: "bw" + i }, gs);
+        var ic = icon(w, s.ic, 560 - 52, 560 - 52, 4.3, s.c, 1.5, ""); ic.setAttribute("id", "bi" + i);
+        txt("sn" + i, 700, 520, s.name, "ptl", s.c, 66, gs);
+        if (i) { gsap.set("#bi" + i, { opacity: 0 }); gsap.set("#sn" + i, { opacity: 0 }); }
+      });
+      txt("tm", 700, 628, "09:58", "mono", C.text, 84, gs); document.getElementById("tm").setAttribute("font-weight", "bold");
+      pill("dp", 1100, 428, 150, "10/7", "#222228", C.dim, 28, gs);
+      hid(["#gs"]);
+
+      /* ---- link pill + cursor (S2) ---- */
+      var lk = grp("lk", gm);
+      el("rect", { x: 630, y: 794, width: 340, height: 72, rx: 36, fill: "#1b2231", stroke: C.blue, "stroke-width": 3 }, lk);
+      icon(lk, "link", 662, 812, 1.5, C.blue, 2);
+      txt("lkT", 728, 831, "加入連結", "ptl", C.blue, 32, lk);
+      hid(["#lk"]);
+      var cur = grp("cur", gm);
+      el("path", { d: "M0 0 L0 26 L7 20 L12 31 L17 29 L12 18 L21 18 Z", transform: "scale(1.9)", fill: C.text, stroke: "#0e0e10", "stroke-width": 2 }, cur);
+      gsap.set(cur, { x: 1260, y: 820, opacity: 0 });
+
+      /* ---- decision (S6-S8) ---- */
+      txt("cap", 800, 352, "第一個進場的人", "pt", C.dim, 36, gm); hid(["#cap"]);
+      var dm = grp("dm", gm);
+      el("polygon", { id: "dFace", points: "800,400 1100,540 800,680 500,540", fill: C.card, stroke: C.edge, "stroke-width": 4, "stroke-linejoin": "round", filter: "url(#sh)" }, dm);
+      icon(dm, "shield", 800 - 29, 466, 2.4, C.yellow, 1.8);
+      txt("dT", 800, 590, "主持人授權？", "pt", C.text, 38, dm);
+      hid(["#dm"]);
+      line("dL", "M500 540 H380 V722", "ln", gm); line("dR", "M1100 540 H1220 V722", "ln", gm);
+      prep("#dL"); prep("#dR");
+      txt("lbN", 436, 506, "NO", "mono", C.dim, 32, gm, "middle"); txt("lbY", 1164, 506, "YES", "mono", C.dim, 32, gm, "middle"); hid(["#lbN", "#lbY"]);
+      function result(id, x, ic, title, sub, color) {
+        var g = grp(id, gm);
+        el("rect", { class: "face", x: x, y: 722, width: 440, height: 150, rx: 24, fill: C.card, stroke: C.edge, "stroke-width": 4, filter: "url(#sh)" }, g);
+        el("rect", { x: x + 24, y: 758, width: 80, height: 80, rx: 20, fill: "#25252a" }, g);
+        icon(g, ic, x + 24 + 16, 758 + 16, 2, color, 1.7);
+        txt(id + "T", x + 124, 790, title, "ptl", C.text, 36, g);
+        txt(id + "S", x + 124, 836, sub, "ptl", color, 25, g);
+        hid(["#" + id]); return g;
+      }
+      result("ca", 160, "users", "一般與會者", "能開會 · 不能主持", STEEL);
+      result("cb", 1000, "crown", "共同主持人", "自動取得 · 可主持", C.green);
+      function who(id, x, y, color) {
+        var g = el("g", { id: id, transform: "translate(" + x + " " + y + ")" }, gm);
+        var c = el("circle", { cx: 0, cy: 0, r: 34, fill: C.card, "stroke-width": 4 }, g); gsap.set(c, { stroke: color });
+        icon(g, "user", -17, -17, 1.4, color, 2);
+        gsap.set(g, { opacity: 0 });
+      }
+      who("whoA", 500, 540, STEEL); who("whoB", 1100, 540, C.green);
+
+      /* ---- headline (S9) ---- */
+      txt("h1", 800, 370, "誰先進場", "pt", C.text, 150, g9); hid(["#h1"]);
+      var hl = el("rect", { id: "hl", x: 330, y: 470, width: 940, height: 200, rx: 26, fill: C.yellow }, g9); gsap.set(hl, { scaleX: 0, transformOrigin: "0% 50%" });
+      txt("h2", 800, 572, "決定誰能主持", "pt", "#0e0e10", 116, g9); hid(["#h2"]);
+      pill("wbx", 800, 780, 220, "WEBEX", "#1b2231", C.blue, 28, g9); hid(["#wbx"]);
+
+      /* ================= timeline ================= */
+      var T = function (i) { return SC[i - 1]; };
+      var t;
+      function setState(a, b, at, color, kind) {
+        tl.to("#sn" + a, { opacity: 0, duration: 0.15 }, at); tl.to("#bi" + a, { opacity: 0, duration: 0.15 }, at);
+        tl.fromTo("#sn" + b, { opacity: 0, x: 14 }, { opacity: 1, x: 0, duration: 0.25, ease: "power2.out", immediateRender: false }, at + 0.08);
+        tl.to("#bi" + b, { opacity: 1, duration: 0.2 }, at + 0.08);
+        tl.to("#gsRing", { stroke: color, duration: 0.25 }, at); tl.to("#gsFace", { stroke: color, duration: 0.25 }, at);
+        if (kind) sfx(kind, at);
+      }
+      function clock(at, from, to, dur, every) {
+        var o = { m: from }, e = document.getElementById("tm");
+        tl.to(o, { m: to, duration: dur, ease: "none", onUpdate: function () { e.textContent = fmt(o.m); } }, at);
+        var n = Math.floor((to - from) / every);
+        for (var i = 1; i <= n; i++) sfx("tick", at + dur * (i * every) / (to - from));
+      }
+      function run(i, from, to, at, dur) {
+        tl.to("#sf" + i, { scaleX: 1, duration: dur, ease: "none" }, at);
+        tl.to("#ph", { x: to, duration: dur, ease: "none" }, at);
+      }
+
+      /* S1 : meeting created */
+      t = T(1);
+      V.fade("#tlb", t + 0.05); V.pop("#ph", t + 0.35, true); V.pop("#tkg0", t + 0.4, true);
+      V.pop("#gs", t + 0.3);
+      /* S2 : click link -> waiting */
+      t = T(2);
+      V.pop("#lk", t + 0.2); tl.set("#cur", { opacity: 1 }, t + 0.3);
+      tl.to("#cur", { x: 835, y: 835, duration: 0.7, ease: "power2.inOut" }, t + 0.4);
+      tl.to("#lk", { scale: 0.93, transformOrigin: "50% 50%", duration: 0.08, yoyo: true, repeat: 1 }, t + 1.2); sfx("tick", t + 1.2);
+      tl.to("#cur", { opacity: 0, duration: 0.2 }, t + 1.55); tl.to("#lk", { opacity: 0, duration: 0.2 }, t + 1.55);
+      setState(0, 1, t + 1.35, C.orange, "pop");
+      V.pop("#segT0", t + 1.5, true);
+      tl.to("#bw1", { rotation: 180, svgOrigin: "560 560", duration: 0.45, ease: "power2.inOut" }, t + 2.3);
+      tl.to("#bw1", { rotation: 360, svgOrigin: "560 560", duration: 0.45, ease: "power2.inOut" }, t + 3.2);
+      /* S3 : waiting until 11:15 */
+      t = T(3);
+      clock(t + 0.15, 598, 675, 2.5, 8); run(0, 0, 800, t + 0.15, 2.5);
+      tl.to("#bw1", { rotation: 540, svgOrigin: "560 560", duration: 0.45, ease: "power2.inOut" }, t + 1.0);
+      tl.to("#bw1", { rotation: 720, svgOrigin: "560 560", duration: 0.45, ease: "power2.inOut" }, t + 2.0);
+      V.pop("#tkg1", t + 2.5, true);
+      /* S4 : 11:15 early entry */
+      t = T(4);
+      setState(1, 2, t + 0.1, C.blue, "ding"); V.pop("#segT1", t + 0.15, true);
+      clock(t + 0.6, 675, 690, 1.9, 5); run(1, 0, 1130, t + 0.6, 1.9);
+      V.pop("#tkg2", t + 2.4, true);
+      /* S5 : 11:30 meeting starts */
+      t = T(5);
+      setState(2, 3, t + 0.1, C.green, "ding"); V.pop("#segT2", t + 0.15, true);
+      clock(t + 0.5, 690, 720, 1.9, 10); run(2, 0, 1500, t + 0.5, 1.9);
+      V.pop("#tkg3", t + 2.4, true);
+      /* S6 : the question */
+      t = T(6);
+      tl.to("#gs", { opacity: 0, duration: 0.25 }, t + 0.05);
+      V.pop("#dm", t + 0.35); V.fade("#cap", t + 0.9);
+      V.draw("#dL", t + 2.9, 0.5); V.draw("#dR", t + 2.9, 0.5);
+      V.fade("#lbN", t + 3.2); V.fade("#lbY", t + 3.2);
+      /* S7 : NO */
+      t = T(7);
+      tl.to("#lbN", { fill: C.text, duration: 0.2 }, t + 0.05); tl.to("#dR", { opacity: 0.25, duration: 0.25 }, t + 0.05);
+      tl.set("#whoA", { opacity: 1 }, t + 0.15); V.along("#whoA", "#dL", t + 0.2, 0.9);
+      tl.to("#whoA", { opacity: 0, duration: 0.15 }, t + 1.1);
+      V.pop("#ca", t + 1.05); tl.to("#ca .face", { stroke: STEEL, duration: 0.25 }, t + 1.05);
+      /* S8 : YES */
+      t = T(8);
+      tl.to("#dR", { opacity: 1, stroke: C.green, duration: 0.25 }, t + 0.05); tl.to("#dL", { opacity: 0.25, duration: 0.25 }, t + 0.05);
+      tl.to("#lbY", { fill: C.green, duration: 0.2 }, t + 0.05);
+      tl.set("#whoB", { opacity: 1 }, t + 0.1); V.along("#whoB", "#dR", t + 0.15, 0.8);
+      tl.to("#whoB", { opacity: 0, duration: 0.15 }, t + 0.95);
+      V.pop("#cb", t + 0.9); tl.to("#cb .face", { stroke: C.green, duration: 0.25 }, t + 0.9); sfx("ding", t + 0.95);
+      /* S9 : headline */
+      t = T(9);
+      V.hide("#gm", t); V.show("#g9", t);
+      V.pop("#h1", t + 0.05);
+      tl.to("#hl", { scaleX: 1, duration: 0.35, ease: "power3.out" }, t + 0.25); sfx("draw", t + 0.25, 0.35);
+      V.pop("#h2", t + 0.4); V.pop("#wbx", t + 0.8, true); sfx("chime", t + 0.8);
+
+      tl.set({}, {}, TOTAL);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

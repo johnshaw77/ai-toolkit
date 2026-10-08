@@ -466,3 +466,35 @@ collector 的 log 全程是空的，沒有例外。
 - 跨機器經 Tailscale 連線
 - Windows 上的背景子行程
 - 互動模式的 TUI 實際刷新與響鈴：只驗了單幀畫面
+
+## 2026-10-08　speed-explainer：本機完整產出 stepper-fast
+
+| # | 驗證 | 結果 |
+|---:|---|---|
+| 1 | `./setup.sh` | 建好 `.venv`，兩個字型下載成功（5,839,972／5,695,744 bytes） |
+| 2 | 7 個專案、共 21 個 py 檔 `py_compile` | 全部通過；改完後沒有殘留任何雲端路徑 |
+| 3 | 7 個專案的旁白相對路徑 | `v1.mp3` 都找得到 |
+| 4 | stepper-fast 依序跑 `build.py` → `getsfx.py` → `audio.py` | 68 個音效事件，頁面 0 個錯誤；`sc.json`、`sfx.json` 和雲端版逐位元組相同 |
+| 5 | `hyperframes@0.8.138 check` | 0 error、0 warning、4 info；32／32 文字對比通過 WCAG AA |
+| 6 | `render` | 35.8 秒、1920×1080、有音軌 |
+| 7 | 和雲端成品比對 2／9／16／25／33 秒的畫面 | 並排看一致；PSNR 37 到 54 dB（差異來自編碼） |
+| 8 | 解開 7 個 `.tar.gz`，和資料夾做 `diff -r` | 除了這次改的 py 檔和重新產生的檔案，內容完全相同 |
+
+**沒驗到的**：其他 6 個專案只做了語法檢查和路徑檢查，沒有實際 render。
+
+## 2026-10-08　jnx-explainer 合併後驗證
+
+| # | 驗證 | 結果 |
+|---:|---|---|
+| 1 | 搬移後重跑 `setup.sh`（.venv 搬位置後 pip shebang 會壞，所以重建） | 成功 |
+| 2 | `templates/dark-ui` 依序跑 build → getsfx → audio | 68 個事件、0 錯誤；`sfx.json` 和 `vo.wav`、`bgm.wav`、`sfx.wav` 都跟搬移前逐位元組相同 |
+| 3 | `templates/dark-ui` check + render | check 通過（只剩 lint 的 composition_file_too_large）；成品 35.8 秒、1920×1080、有音軌 |
+| 4 | `examples/desktop` 依序跑 build → getsfx → audio + check | 112 個事件、0 錯誤；`sfx.json` 相同，check 通過 |
+| 5 | `templates/line-icon` 第一次 check | 對比不足多處（說明灰 3.19:1、ghost 膠囊 1.6:1）→ 改色、改 ghostPill |
+| 6 | 同上，第二次 check | `container_overflow` warning：移動的點畫在 (0,0) → 給起始 transform |
+| 7 | 同上，第三次 check | 0 error、0 warning |
+| 8 | line-icon snapshot（10 張）逐張看 | 開場字標深色可讀；節點、連線、打勾、放行線、標語、結尾都在位置上，沒有裁切或重疊 |
+| 9 | line-icon render | 23.57 秒、1920×1080、有音軌；mean −22.9 dB、max −3.4 dB |
+| 10 | 移開 `keys.npy` 跑 dark-ui 的 `audio.py` | `audio ok 35.8`（改用合成打字聲） |
+
+**沒驗到的**：ci、codex、skill、sso、webex 這 5 個範例在搬移後只做了語法檢查，沒有重跑；line-icon 成品只看了 snapshot，沒有逐秒聽過音效的時間點。

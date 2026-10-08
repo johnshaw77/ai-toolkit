@@ -1,0 +1,16 @@
+# 本機環境（./setup.sh 會重建）
+.venv/
+fonts/
+__pycache__/
+
+# 雲端搬來的原始壓縮檔
+_archive/
+
+# 成品與可重建的中間檔（build.py / audio.py / snapshot 會重新產生）
+*.mp4
+*.wav
+snapshots/
+
+# 真實鍵盤錄音：授權還沒確認，先不進版控
+keys.npy
+keys_src.mp3

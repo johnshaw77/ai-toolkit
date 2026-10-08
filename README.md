@@ -1,16 +1,17 @@
 # ai-toolkit
 
-自己寫來輔助開發的工具，收在同一個 repo。三個東西彼此獨立，可以只裝需要的那個。
+自己寫來輔助開發的工具，收在同一個 repo。這幾個東西彼此獨立，可以只裝需要的那個。
 
 | # | 工具 | 是什麼 | 形態 |
 |---:|---|---|---|
 | 1 | [`unattended-workflow/`](unattended-workflow/) | 讓 Claude Code 一路做到底再回報，並把每次對話存成 HTML | Claude Code plugin |
 | 2 | [`screencast/`](screencast/) | 用 Playwright 操作網頁錄操作教學影片，含假游標與 TTS 旁白 | Claude Code skill |
 | 3 | [`smart-scaffold/`](smart-scaffold/) | 逐步問答式的專案腳手架，問完就生出可以動工的骨架 | 獨立 Python CLI |
+| 4 | [`skills/jnx-explainer/`](skills/jnx-explainer/) | jnxstudio 品牌的繁中解說短片：旁白、BGM、音效，深色 UI 與米白線條兩種風格 | Claude Code skill |
 
 ## 安裝
 
-三者各自獨立，挑要用的裝就好。
+各自獨立，挑要用的裝就好。
 
 ### 1. unattended（plugin）
 
@@ -95,6 +96,18 @@ smart-scaffold --help
 三個 preset（`py` / `web` / `app`）的差別見
 [`smart-scaffold/README.md`](smart-scaffold/README.md)。
 
+### 4. jnx-explainer（skill）
+
+需要 Node 22 以上、ffmpeg、Google Chrome。
+
+```bash
+ln -s ~/ai-toolkit/skills/jnx-explainer ~/.claude/skills/jnx-explainer
+~/ai-toolkit/skills/jnx-explainer/setup.sh     # 建 .venv、下載繁中字型
+```
+
+打字音效用的真實鍵盤錄音 `keys.npy` 沒有進版控（授權未確認），沒有它時會自動改用合成的打字聲。
+風格、流程與範本見 [`skills/jnx-explainer/SKILL.md`](skills/jnx-explainer/SKILL.md)。
+
 ## 這個 repo 的結構
 
 ```
@@ -102,10 +115,11 @@ ai-toolkit/
 ├── .claude-plugin/marketplace.json   ← plugin marketplace 清單（目前只有 unattended）
 ├── unattended-workflow/              ← plugin 根，自己有 .claude-plugin/plugin.json
 ├── screencast/                       ← skill 根，SKILL.md 在這一層
-└── smart-scaffold/                   ← Python 套件根
+├── smart-scaffold/                   ← Python 套件根
+└── skills/jnx-explainer/             ← skill 根，SKILL.md 在這一層
 ```
 
-三個子目錄都是用 `git subtree` 併進來的，各自的 commit 歷史都在
+前三個子目錄是用 `git subtree` 併進來的，各自的 commit 歷史都在
 （`git log --full-history -- <子目錄>`）。各子目錄有自己的 README 與 CLAUDE.md，
 改動時看那一份。
 

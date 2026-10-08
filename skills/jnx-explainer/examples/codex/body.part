@@ -1,0 +1,232 @@
+
+      Object.assign(IC, {
+        folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+        filetext: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+        user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+        clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+        mail: '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
+        calendar: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>',
+        cloud: '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
+        arrowup: '<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
+        image: '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
+        chart: '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>'
+      });
+      var BLUEBG = "#1b2231", DARK = "#202024";
+      function hid(l) { l.forEach(function (s) { if (document.querySelector(s)) gsap.set(s, { opacity: 0 }); }); }
+      function windowFrame(id, x, y, w, h, parent) {
+        var g = grp(id, parent);
+        el("rect", { class: "face", x: x, y: y, width: w, height: h, rx: 22, fill: C.card, stroke: C.edge, "stroke-width": 3, filter: "url(#sh)" }, g);
+        el("path", { d: "M" + x + " " + (y + 56) + " H" + (x + w), stroke: C.edge, "stroke-width": 2 }, g);
+        [C.red, C.yellow, C.green].forEach(function (c, i) { el("circle", { cx: x + 32 + i * 20, cy: y + 28, r: 6, fill: c, opacity: 0.85 }, g); });
+        return g;
+      }
+      function card(id, x, y, w, h, parent) {
+        var g = grp(id, parent);
+        el("rect", { class: "face", x: x, y: y, width: w, height: h, rx: 22, fill: C.card, stroke: C.edge, "stroke-width": 3, filter: "url(#sh)" }, g);
+        return g;
+      }
+      function pctText(id, v) { document.getElementById(id).textContent = Math.round(v) + "%"; }
+      var G = []; for (var gi = 0; gi <= 10; gi++) { G[gi] = grp("g" + gi); gsap.set(G[gi], { opacity: 0 }); }
+
+      /* ===== brand logo helper (from favicon.svg) ===== */
+      function logo(id, cx, cy, size, parent) {
+        var g = grp(id, parent), s = size / 128;
+        var inner = el("g", { transform: "translate(" + (cx - size / 2) + " " + (cy - size / 2) + ") scale(" + s + ")" }, g);
+        el("circle", { cx: 64, cy: 64, r: 57, fill: "url(#redG)" }, inner);
+        el("circle", { cx: 64, cy: 64, r: 55.5, fill: "none", stroke: "#fff", "stroke-opacity": 0.92, "stroke-width": 2 }, inner);
+        var orb = el("g", { class: "orb", fill: "none", stroke: "#fff", "stroke-width": 5, "stroke-linecap": "round", "stroke-linejoin": "round" }, inner);
+        [-32, 32, 90].forEach(function (r) { el("ellipse", { class: "oe", cx: 64, cy: 64, rx: 33, ry: 13, transform: "rotate(" + r + " 64 64)" }, orb); });
+        el("circle", { class: "od", cx: 64, cy: 64, r: 7, fill: "#fff", stroke: "none" }, orb);
+        el("circle", { class: "od", cx: 91, cy: 48, r: 4, fill: "#fff", stroke: "none" }, orb);
+        el("circle", { class: "od", cx: 105, cy: 24, r: 4, fill: "#fff" }, inner);
+        return g;
+      }
+      /* ===== S0 : brand intro (jnxstudio) ===== */
+      logo("lg0", 800, 330, 230, G[0]);
+      var wm0 = grp("wm0", G[0]); el("use", { href: "#wmImg", x: 450, y: 530 }, wm0); wm0.setAttribute("clip-path", "url(#wmClip)");
+      hid(["#lg0"]);
+      document.querySelectorAll("#lg0 .oe").forEach(function (e) { var L = e.getTotalLength(); gsap.set(e, { strokeDasharray: L + " " + (L + 40), strokeDashoffset: L + 8 }); });
+      gsap.set("#lg0 .od", { opacity: 0 });
+
+
+      /* ===== persistent picture (the user's generated concept image) ===== */
+      var PG = grp("pg"); gsap.set(PG, { opacity: 0 });
+      windowFrame("pgw", 300, 96, 1000, 690, PG);
+      txt("pgT", 430, 125, "concept.png", "mono", C.dim, 22, PG);
+      el("rect", { x: 306, y: 158, width: 988, height: 618, fill: "#0e0e10" }, PG);
+      var picg = grp("picg", PG); picg.setAttribute("clip-path", "url(#revClip)");
+      el("use", { href: "#ccImg", transform: "translate(306 158) scale(0.62295)" }, picg);
+      var scan = el("rect", { id: "scan", x: 306, y: 158, width: 988, height: 4, fill: C.blue }, PG); gsap.set(scan, { opacity: 0 });
+      pill("st4a", 1180, 124, 150, "生成中", BLUEBG, C.blue, 24, PG);
+      pill("st4b", 1180, 124, 150, "完成", "#10261a", C.green, 24, PG); gsap.set("#st4b", { opacity: 0 });
+      el("rect", { x: 600, y: 117, width: 400, height: 14, rx: 7, fill: C.track }, PG);
+      var pgb = el("rect", { id: "pgb", x: 600, y: 117, width: 400, height: 14, rx: 7, fill: C.blue }, PG); gsap.set(pgb, { scaleX: 0, transformOrigin: "0% 50%" });
+
+      document.getElementById("world").appendChild(G[5]);
+
+      /* ===== S1 : title ===== */
+      var ic1 = grp("ic1", G[1]);
+      el("rect", { x: 720, y: 190, width: 160, height: 160, rx: 38, fill: C.card, stroke: C.edge, "stroke-width": 3, filter: "url(#sh)" }, ic1);
+      icon(ic1, "image", 740, 210, 5, C.blue, 1.6);
+      txt("t1", 800, 480, "Codex Desktop", "pt", C.text, 112, G[1]);
+      var u1 = el("rect", { id: "u1", x: 400, y: 560, width: 800, height: 8, rx: 4, fill: C.blue }, G[1]); gsap.set(u1, { scaleX: 0, transformOrigin: "0% 50%" });
+      pill("sub1", 800, 660, 560, "一句 prompt，生成概念圖", BLUEBG, C.blue, 30, G[1]);
+      hid(["#t1", "#sub1"]); hid(["#ic1"]);
+
+      /* ===== S2 : type the prompt ===== */
+      var PROMPT = "幫我做財務系統平台的初稿設計，先給概念圖";
+      var w2 = windowFrame("w2", 250, 110, 1100, 680, G[2]);
+      txt("w2T", 380, 139, "Codex", "ptl", C.dim, 22, w2);
+      txt("hi2", 800, 380, "今天想做什麼？", "pt", C.dim, 44, G[2]);
+      var ib2 = grp("ib2", G[2]);
+      el("rect", { x: 290, y: 600, width: 1020, height: 130, rx: 30, fill: "#222228", stroke: C.edge, "stroke-width": 2.5 }, ib2);
+      txt("in2", 326, 665, "", "mono", C.text, 32, ib2);
+      el("circle", { id: "sndC", cx: 1262, cy: 665, r: 34, fill: "#2a2a30" }, ib2);
+      icon(ib2, "arrowup", 1248, 651, 1.17, C.dim, 2.6, "sndI");
+      [[3, 6], [17, 3]].forEach(function (u, i) {
+        var r = el("rect", { id: "ul" + i, x: 326 + u[0] * 32, y: 686, width: u[1] * 32, height: 6, rx: 3, fill: C.yellow }, G[2]); gsap.set(r, { scaleX: 0, transformOrigin: "0% 50%" });
+      });
+      pill("lb2", 350, 568, 130, "prompt", "#2a2410", C.yellow, 22, G[2]);
+      hid(["#w2", "#hi2", "#ib2", "#lb2"]);
+
+      /* ===== S3 : sent, model works ===== */
+      var w3 = windowFrame("w3", 250, 110, 1100, 680, G[3]);
+      txt("w3T", 380, 139, "Codex", "ptl", C.dim, 22, w3);
+      var ib3 = grp("ib3", G[3]);
+      el("rect", { x: 290, y: 660, width: 1020, height: 96, rx: 28, fill: "#222228", stroke: C.edge, "stroke-width": 2.5 }, ib3);
+      el("circle", { id: "snd3", cx: 1262, cy: 708, r: 30, fill: C.orange }, ib3);
+      icon(ib3, "arrowup", 1249, 695, 1.08, "#0e0e10", 2.6);
+      var ub3 = grp("ub3", G[3]);
+      el("rect", { x: 590, y: 180, width: 720, height: 78, rx: 26, fill: BLUEBG, stroke: C.blue, "stroke-width": 2.5 }, ub3);
+      txt("ub3T", 622, 220, PROMPT, "ptl", C.text, 30, ub3);
+      [["分析需求", 0], ["規劃版面", 1], ["生成圖片", 2]].forEach(function (s, i) {
+        var y = 320 + i * 100, g = grp("st3" + i, G[3]);
+        el("rect", { class: "face", x: 330, y: y, width: 940, height: 78, rx: 20, fill: DARK, stroke: C.edge, "stroke-width": 2.5 }, g);
+        var bg = badge("sb3" + i, 384, y + 39, "clock", C.grey, g); overlay(bg, 384, y + 39, "check", C.green, "ok");
+        txt("st3t" + i, 440, y + 41, s[0], "ptl", C.text, 32, g);
+        gsap.set(g, { opacity: 0 });
+      });
+      el("rect", { x: 780, y: 552, width: 440, height: 14, rx: 7, fill: C.track }, G[3]);
+      var b3 = el("rect", { id: "b3", x: 780, y: 552, width: 440, height: 14, rx: 7, fill: C.blue }, G[3]); gsap.set(b3, { scaleX: 0, transformOrigin: "0% 50%" });
+      gsap.set("#b3", { opacity: 0 }); gsap.set(G[3].children[G[3].children.length - 2], { opacity: 0 });
+      hid(["#ub3"]);
+
+      /* ===== S5 : callouts over the picture ===== */
+      var CO = [["M436.8 217.8 h847.2 v95.9 h-847.2 z", "KPI 卡片", 1450, 266, 1284, 1355],
+                ["M436.8 321.8 h515.8 v223.6 h-515.8 z", "趨勢圖", 150, 434, 245, 436.8],
+                ["M962.6 321.8 h321.4 v223.6 h-321.4 z", "廠區表格", 1450, 434, 1284, 1355],
+                ["M436.8 555.5 h505.9 v184.4 h-505.9 z", "獲利分析", 150, 648, 245, 436.8],
+                ["M953.9 555.5 h330.2 v185.6 h-330.2 z", "風險提醒", 1450, 648, 1284, 1355]];
+      CO.forEach(function (c, i) {
+        line("co" + i, c[0], "gl", G[5]); document.getElementById("co" + i).style.stroke = C.yellow; prep("#co" + i);
+        line("cd" + i, "M" + c[4] + " " + c[3] + " H" + c[5], "ln", G[5]); document.getElementById("cd" + i).style.stroke = C.yellow; prep("#cd" + i);
+        pill("cp" + i, c[2], c[3], 190, c[1], "#2a2410", C.yellow, 26, G[5]); gsap.set("#cp" + i, { opacity: 0 });
+      });
+
+      /* ===== S6 : next - refine ===== */
+      [["概念圖", "check"], ["調整版面與配色", "clock"], ["開發實作", "clock"]].forEach(function (s, i) {
+        var y = 250 + i * 130, g = grp("rf" + i, G[6]);
+        el("rect", { class: "face", x: 760, y: y, width: 720, height: 100, rx: 24, fill: C.card, stroke: C.edge, "stroke-width": 3, filter: "url(#sh)" }, g);
+        var bg = badge("rb" + i, 826, y + 50, "clock", C.grey, g); overlay(bg, 826, y + 50, "check", C.green, "ok");
+        txt("rft" + i, 890, y + 52, s[0], "ptl", C.text, 36, g);
+        gsap.set(g, { opacity: 0 });
+      });
+      line("rfl0", "M826 350 V380", "ln", G[6]); line("rfl1", "M826 480 V510", "ln", G[6]); prep("#rfl0"); prep("#rfl1");
+
+      /* ===== S7 : headline ===== */
+      var bk = grp("bk", G[7]);
+      [-32, 32, 90].forEach(function (r) { el("ellipse", { cx: 800, cy: 450, rx: 330, ry: 128, fill: "none", stroke: "#26262c", "stroke-width": 3, transform: "rotate(" + r + " 800 450)" }, bk); });
+      txt("h1", 800, 350, "一句 prompt", "pt", C.text, 130, G[7]); hid(["#h1", "#bk"]);
+      var hl = el("rect", { id: "hl", x: 300, y: 440, width: 1000, height: 200, rx: 26, fill: "#e8123a" }, G[7]); gsap.set(hl, { scaleX: 0, transformOrigin: "0% 50%" });
+      txt("h2", 800, 543, "一張概念圖", "pt", "#ffffff", 104, G[7]); hid(["#h2"]);
+      pill("wbx", 800, 750, 340, "Codex Desktop", BLUEBG, C.blue, 30, G[7]); hid(["#wbx"]);
+
+      /* ===== S8 : brand end card ===== */
+      logo("lg10", 800, 340, 200, G[8]);
+      var wm10 = grp("wm10", G[8]); el("use", { href: "#wmImg", transform: "translate(500 540) scale(0.857)" }, wm10);
+      hid(["#lg10", "#wm10"]);
+
+      /* ================= timeline ================= */
+      var T = function (i) { return SC[i - 1]; };
+      var t, i, k;
+      function spin(sel, to, at, dur, ease) { var e = document.querySelector(sel), o = { a: 0 }; tl.to(o, { a: to, duration: dur, ease: ease, onUpdate: function () { e.setAttribute("transform", "rotate(" + o.a + " 64 64)"); } }, at); }
+      function iris(at, cx, cy) {
+        tl.set(["#cc", "#hole"], { attr: { cx: cx, cy: cy, r: 0 } }, at - 0.01);
+        tl.to("#cc", { attr: { r: 1100 }, duration: 0.5, ease: "power3.in" }, at); sfx("swipe", at);
+      }
+      function irisOpen(at, cx, cy) {
+        tl.set("#hole", { attr: { cx: cx, cy: cy } }, at - 0.01);
+        tl.to("#hole", { attr: { r: 1200 }, duration: 0.55, ease: "power2.out" }, at); sfx("ding", at + 0.15);
+      }
+      /* S0 : brand intro */
+      V.show(G[0], 0);
+      V.pop("#lg0", 0.1, true); sfx("sting", 0.1);
+      document.querySelectorAll("#lg0 .oe").forEach(function (e, n) { tl.to(e, { strokeDashoffset: 0, duration: 0.5, ease: "power2.inOut" }, 0.45 + n * 0.1); });
+      tl.to("#lg0 .od", { opacity: 1, duration: 0.2, stagger: 0.08 }, 0.95);
+      spin("#lg0 .orb", 120, 0.5, 1.9, "power2.inOut");
+      tl.to("#wmR", { attr: { width: 700 }, duration: 0.6, ease: "power3.out" }, 1.0); sfx("pop", 1.0);
+      iris(2.05, 800, 330);
+      V.hide(G[0], 2.55); V.show(G[1], 2.55);
+      irisOpen(2.55, 800, 450);
+
+      /* S1 */
+      t = T(1);
+      V.pop("#ic1", t - 0.3);
+      V.pop("#t1", t - 0.12);
+      tl.to("#u1", { scaleX: 1, duration: 0.4, ease: "power3.out" }, t + 0.5); sfx("draw", t + 0.5, 0.4);
+      V.pop("#sub1", t + 1.0, true); sfx("chime", t + 1.0);
+      /* S2 : type the prompt */
+      t = T(2); V.hide(G[1], t); V.show(G[2], t);
+      V.pop("#w2", t + 0.05); V.fade("#hi2", t + 0.2); V.pop("#ib2", t + 0.3, true); V.pop("#lb2", t + 0.5, true);
+      V.type("#in2", PROMPT, t + 0.7, 0.06);
+      for (i = 0; i < 2; i++) { tl.to("#ul" + i, { scaleX: 1, duration: 0.25, ease: "power2.out" }, t + 2.1 + i * 0.2); sfx("pop", t + 2.1 + i * 0.2); }
+      /* S3 : sent + steps */
+      t = T(3); V.hide(G[2], t); V.show(G[3], t);
+      tl.fromTo("#snd3", { scale: 1, transformOrigin: "50% 50%" }, { scale: 1.2, duration: 0.12, yoyo: true, repeat: 1, immediateRender: false }, t + 0.02); sfx("ding", t + 0.05);
+      V.pop("#ub3", t + 0.15);
+      for (i = 0; i < 3; i++) V.fade("#st3" + i, t + 0.7 + i * 0.35);
+      V.flip("sb30", "ok", C.green, t + 1.5, "tick");
+      V.flip("sb31", "ok", C.green, t + 2.4, "tick");
+      V.stroke("#sb32 .ring", C.blue, t + 2.5); V.stroke("#sb32 .base", C.blue, t + 2.5);
+      tl.set("#b3", { opacity: 1 }, t + 2.5); tl.set(G[3].children[G[3].children.length - 2], { opacity: 1 }, t + 2.5);
+      V.bar("#b3", t + 2.5, 1.3, 0.7, C.blue, null);
+      /* S4 : generate + reveal */
+      t = T(4); V.hide(G[3], t); V.show(PG, t);
+      tl.to("#pgb", { scaleX: 1, duration: 1.7, ease: "power1.inOut" }, t + 0.2); sfx("fill", t + 0.2, 1.7);
+      tl.to("#scan", { opacity: 1, duration: 0.1 }, t + 0.35);
+      tl.to("#scan", { y: 614, duration: 1.4, ease: "power2.inOut" }, t + 0.4); sfx("travel", t + 0.4, 1.4);
+      tl.to("#revR", { attr: { height: 618 }, duration: 1.4, ease: "power2.inOut" }, t + 0.4);
+      tl.to("#scan", { opacity: 0, duration: 0.15 }, t + 1.8);
+      V.swapText("#st4a", "#st4b", t + 1.9); sfx("ding", t + 1.9);
+      tl.to("#pgb", { fill: C.green, duration: 0.2 }, t + 1.9);
+      /* S5 : callouts */
+      t = T(5); V.show(G[5], t);
+      var cot = [0.2, 0.9, 1.6, 2.0, 2.5];
+      for (i = 0; i < 5; i++) { V.draw("#co" + i, t + cot[i], 0.4); V.draw("#cd" + i, t + cot[i] + 0.25, 0.2); tl.set("#cp" + i, { opacity: 1 }, t + cot[i] + 0.4); sfx("pop", t + cot[i] + 0.4); }
+      /* S6 : refine next */
+      t = T(6); V.hide(G[5], t); V.show(G[6], t);
+      tl.to(PG, { x: -210, y: 190, scale: 0.52, transformOrigin: "0% 0%", duration: 0.55, ease: "power3.inOut" }, t); sfx("travel", t, 0.5);
+      for (i = 0; i < 3; i++) V.fade("#rf" + i, t + 0.5 + i * 0.25);
+      V.flip("rb0", "ok", C.green, t + 0.9, "tick");
+      V.draw("#rfl0", t + 1.2, 0.2); V.draw("#rfl1", t + 1.4, 0.2);
+      V.stroke("#rb1 .ring", C.blue, t + 1.5); V.stroke("#rb1 .base", C.blue, t + 1.5);
+      /* S7 : headline */
+      t = T(7); V.hide(G[6], t); V.hide(PG, t); tl.set(PG, { x: 0, y: 0, scale: 1 }, t); V.show(G[7], t);
+      V.pop("#bk", t + 0.05, true); tl.to("#bk", { rotation: 55, duration: 4, ease: "none" }, t);
+      V.pop("#h1", t + 0.05);
+      tl.to("#hl", { scaleX: 1, duration: 0.35, ease: "power3.out" }, t + 0.25); sfx("draw", t + 0.25, 0.35);
+      V.pop("#h2", t + 0.4); V.pop("#wbx", t + 0.9, true); sfx("chime", t + 0.9);
+      /* S8 : iris to brand end card */
+      iris(t + 2.85, 800, 450);
+      V.hide(G[7], t + 3.35); V.show(G[8], t + 3.35);
+      irisOpen(t + 3.35, 800, 380);
+      V.pop("#lg10", t + 3.55, true); sfx("sting", t + 3.55);
+      spin("#lg10 .orb", 90, t + 3.55, 2.2, "power1.inOut");
+      V.pop("#wm10", t + 3.8, true); sfx("pop", t + 3.8);
+
+      tl.set({}, {}, TOTAL);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>
