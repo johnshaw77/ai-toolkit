@@ -1,0 +1,1 @@
+{ "name": "todo-rail", "version": "0.1.0", "description": "輸入框上方一排小方塊顯示待辦進度：完成一項亮一格，目前進行中的那項寫在旁邊", "types": "./types/index.d.ts" }

@@ -1,0 +1,1 @@
+{ "name": "host-badge", "version": "0.1.0", "description": "輸入框上方顯示醒目的機器名稱色塊，多台機器跑 Claude 時一眼分辨在哪台", "types": "./types/index.d.ts" }

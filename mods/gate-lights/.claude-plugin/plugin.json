@@ -1,0 +1,1 @@
+{ "name": "gate-lights", "version": "0.1.0", "description": "完成定義的三顆燈：測試、型別檢查、瀏覽器驗證，全綠才可回報", "types": "./types/index.d.ts" }

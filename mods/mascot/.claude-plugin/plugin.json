@@ -1,0 +1,1 @@
+{ "name": "mascot", "version": "0.1.0", "description": "BMO 風格遊戲機吉祥物＋撐滿欄寬的 LED 跑馬燈（逐字變色）：思考時抬頭眨眼、呼叫工具時邊講話邊按按鈕並在 LED 打出檔名、做完笑著跳、出錯螢幕泛紅；/mascot 開關", "types": "./types/index.d.ts" }
