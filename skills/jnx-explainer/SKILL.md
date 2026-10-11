@@ -43,7 +43,7 @@ jnx-explainer/
 | 5 | `getsfx.py` | 用 Playwright（本機 Chrome）開 `flow/index.html`，把時間軸記錄的 `window.SFX` 存成 `sfx.json` |
 | 6 | `audio.py` | 用 numpy 合成 `vo.wav`、`bgm.wav`、`sfx.wav` 到 `flow/assets/` |
 | 7 | `wm.b64`、`wmh.txt` | jnxstudio 字標（base64 PNG 與高度）。dark-ui 是白字版，line-icon 是深字版 |
-| 8 | `keys.npy` | 真實鍵盤打字取樣（打字音效用）。授權未確認，不進版控；檔案不在時 `audio.py` 改用合成的打字聲 |
+| 8 | `keys.npy` | 舊版的真實鍵盤取樣，只有 `examples/` 的舊片在用。範本的 `audio.py` 已改成全部合成，不再讀它 |
 
 py 檔都以自己所在的資料夾為基準（開頭 `D=…`），專案放在 `templates/` 或 `examples/` 底下都能跑；字型從 `../../fonts/` 讀。
 
@@ -83,8 +83,15 @@ py 檔都以自己所在的資料夾為基準（開頭 `D=…`），專案放在
 ## 音效
 
 - `V.*` helper 呼叫 `sfx(種類, 秒數, 長度)` 記錄事件，`getsfx.py` 取出後由 `audio.py` 合成。
-- 種類：`pop`、`draw`、`travel`、`key`（真實鍵盤取樣）、`tick`、`ding`、`warn`、`chime`、`sting`（品牌）、`swipe`（轉場）、`fill`（不出聲）。
-- 輕巧為主：pop／tick／ding／chime，不要吵的 whoosh。音量配比 vo 1.0、bgm 0.22、sfx 0.75。
+- 種類：`pop`、`draw`、`travel`、`key`、`enter`、`tick`、`ding`、`warn`、`chime`、`sting`（品牌）、`swipe`（轉場）、`fill`（不出聲）。全部用程式合成，不用錄音取樣。
+- 輕巧為主，不要吵的 whoosh。音量配比 vo 1.0、bgm 0.22、sfx 0.75。
+- 要稀疏：pop 增益 0.08、兩個至少隔 0.45 秒；tick 增益 0.25、至少隔 1.5 秒，ding 前後 0.8 秒內不放；打字 key 0.12、Enter 0.25（很輕）。
+- **「噹」類（ding／chime／sting）用柔和版**：2026-10-11 使用者嫌原本的噹（1,300–1,760 Hz、帶高泛音）刺耳、聽多了煩，從四個小樣（現在／柔和／木質／只留輕的）選了柔和。
+  - ding：單音 D5（587 Hz），軟起音，0.45 秒內消失。chime：G4＋D5 兩音。sting（開場／結尾 logo）：低沉的 A 小三和弦（220–330 Hz），慢慢起來。swipe：低通雜訊輕掃，不用上滑音。warn：196 Hz 短低音。
+  - 次數減半（`audio.py` 的 BELL 規則自動套用，`body.part` 照常呼叫 `sfx()` 就好）：開場只留 logo 那聲；結尾 sting 前 1.5 秒內的 ding 不播；每個場景最多一聲，留該場景最後一個（通常是完成、結論）；兩聲至少隔 5 秒（sting 永遠保留）。約每分鐘 6–7 聲。
+  - 副作用：封面那聲若離開場 logo 不到 5 秒會被拿掉，這是刻意的。
+- BGM：預設「電子脈動」，120 bpm、小調 16 分音符撥弦琶音、隨拍子呼吸的 pad、輕的四拍大鼓與反拍 hi-hat，旁白講話時自動壓低 5 dB。
+- 兩個範本的 `audio.py` 一模一樣（與 jnx-explainer 專案 `videos/skill-compare/audio.py` 同步），新片直接複製；`examples/` 是舊片，保留原本的音效。
 - 自己寫的 tween 若需要聲音，手動補一行 `sfx(...)`。
 
 ## 共通的畫面原則
