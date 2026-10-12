@@ -1,5 +1,0 @@
-{
-  "name": "model-router",
-  "version": "0.1.0",
-  "description": "依 prompt 自動分配模型與 effort：輕量問答降到 Sonnet、難題拉高 effort，子 agent 依類型挑模型；!opus／!sonnet／!haiku 強制指定"
-}

@@ -5,19 +5,15 @@
 | # | mod | 做什麼 |
 |---:|---|---|
 | 1 | `context-trim` | Bash 輸出超過 400 行／40,000 字時只留頭尾與錯誤行；指令加 `# keep-full` 不剪；compact 時附上保留清單 |
-| 2 | `model-router` | **預設不啟用**。依 prompt 自動選模型與 effort，子 agent 依類型挑模型；`!opus`／`!sonnet`／`!haiku` 強制指定，`/router` 開關。實測 26 場對話只降級 20 次（對話超過 150k tokens 就不降、問句含動作字也不降），換模型還要重寫快取；子 agent 省錢 clean-view 的 Agent Dock 已經做了，所以沒放進下面的設定 |
-| 3 | `office` | `/office` 像素辦公室、`/sea` 海上冒險 pane，跟著 Claude 的工作狀態變化 |
-| 4 | `conveyor` | Claude 工作時的搬運動畫：黃昏城市裡，token 方塊流進正在處理的檔案，機器人小搬推著推車來回走 |
-| 5 | `host-badge` | 輸入框上方的機器名稱色塊（例如 `MBP`），多台電腦跑 Claude 時一眼分辨在哪台；`/badge <名稱>` 當下改名（寫回設定檔）；名稱與顏色也可在 `~/.claude/host-badge.json` 設定 `label`、`color` |
-| 6 | `nightshift` | `/studio` 深夜工作室、`/camp` 山頂露營 pane，跟著 Claude 的工作狀態變化 |
-| 7 | `mascot` | BMO 風格吉祥物＋LED 跑馬燈，跟著思考／工具呼叫／完成／出錯變化；`/mascot` 開關 |
-| 8 | `mod-list` | `/mods` 列出所有 mod：名稱、斜線指令、有沒有載入、做什麼 |
-| 9 | `done-ding` | 長任務結束時響一聲並跳系統通知；`/ding` 開關與調門檻 |
-| 10 | `todo-rail` | 輸入框上方一排小方塊顯示待辦進度，旁邊寫目前進行中的項目 |
-| 11 | `gate-lights` | 完成定義的三顆燈：測試、型別檢查、瀏覽器驗證 |
-| 12 | `todo-panel` | 把 TodoWrite／Task 清單畫成側欄面板，輸入框上方一行摘要 |
-| 13 | `clean-view` | 簡潔檢視（隱藏工具細節、白話進度清單，`/simple`）＋ Agent Dock（把請求拆給 N 位 helper 的面板，`/dock`） |
-| 14 | `token-weather` | 提示詞上方的天氣列：用晴朗到「建議盡快壓縮」表示上下文窗口飽和度，附百分比、token 用量與最近 12 輪的微型圖表 |
+| 2 | `office` | `/office` 像素辦公室、`/sea` 海上冒險 pane，跟著 Claude 的工作狀態變化 |
+| 3 | `conveyor` | Claude 工作時的搬運動畫：黃昏城市裡，token 方塊流進正在處理的檔案，機器人小搬推著推車來回走 |
+| 4 | `host-badge` | 輸入框上方的機器名稱色塊（例如 `MBP`），多台電腦跑 Claude 時一眼分辨在哪台；`/badge <名稱>` 當下改名（寫回設定檔）；名稱與顏色也可在 `~/.claude/host-badge.json` 設定 `label`、`color` |
+| 5 | `nightshift` | `/studio` 深夜工作室、`/camp` 山頂露營 pane，跟著 Claude 的工作狀態變化 |
+| 6 | `mascot` | BMO 風格吉祥物＋LED 跑馬燈，跟著思考／工具呼叫／完成／出錯變化；`/mascot` 開關 |
+| 7 | `mod-list` | `/mods` 列出所有 mod：名稱、斜線指令、有沒有載入、做什麼 |
+| 8 | `done-ding` | 長任務結束時響一聲並跳系統通知；`/ding` 開關與調門檻 |
+| 9 | `gate-lights` | 完成定義的三顆燈：測試、型別檢查、瀏覽器驗證 |
+| 10 | `clean-view` | 簡潔檢視（隱藏工具細節、白話進度清單，`/simple`）＋ Agent Dock（把請求拆給 N 位 helper 的面板，`/dock`） |
 
 ## 裝到一台電腦
 
@@ -30,7 +26,7 @@
 2. `~/.claude/settings.json` 的 `env` 加上：
 
    ```json
-   "CLAUDE_CODE_PLUGIN_DIRS": "~/.claude/mods/host-badge:~/.claude/mods/context-trim:~/.claude/mods/office:~/.claude/mods/conveyor:~/.claude/mods/nightshift:~/.claude/mods/mascot:~/.claude/mods/mod-list:~/.claude/mods/done-ding:~/.claude/mods/todo-rail:~/.claude/mods/gate-lights:~/.claude/mods/todo-panel:~/.claude/mods/clean-view:~/.claude/mods/token-weather"
+   "CLAUDE_CODE_PLUGIN_DIRS": "~/.claude/mods/host-badge:~/.claude/mods/context-trim:~/.claude/mods/office:~/.claude/mods/conveyor:~/.claude/mods/nightshift:~/.claude/mods/mascot:~/.claude/mods/mod-list:~/.claude/mods/done-ding:~/.claude/mods/gate-lights:~/.claude/mods/clean-view"
    ```
 
    （Windows 用 `;` 分隔）

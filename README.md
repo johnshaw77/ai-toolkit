@@ -8,7 +8,7 @@
 | 2 | [`screencast/`](screencast/) | 用 Playwright 操作網頁錄操作教學影片，含假游標與 TTS 旁白 | Claude Code skill |
 | 3 | [`smart-scaffold/`](smart-scaffold/) | 逐步問答式的專案腳手架，問完就生出可以動工的骨架 | 獨立 Python CLI |
 | 4 | [`skills/jnx-explainer/`](skills/jnx-explainer/) | jnxstudio 品牌的繁中解說短片：旁白、BGM、音效，深色 UI 與米白線條兩種風格 | Claude Code skill |
-| 5 | [`mods/`](mods/) | 14 個 Claude Code mod：簡潔檢視與 Agent Dock、吉祥物、待辦面板、上下文天氣列等 | Claude Code mod |
+| 5 | [`mods/`](mods/) | 10 個 Claude Code mod：簡潔檢視與 Agent Dock、吉祥物、像素辦公室、上下文壓縮等 | Claude Code mod |
 
 ## 安裝
 
