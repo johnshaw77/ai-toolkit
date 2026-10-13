@@ -1,0 +1,6 @@
+{
+  "name": "model-router",
+  "version": "0.3.0",
+  "description": "依 prompt 難度自動分配 Haiku／Sonnet／Opus：由 TypeSafe Jev 判斷，/router on｜off 切換（預設關）；~opus／~sonnet／~haiku 強制指定",
+  "author": { "name": "john_hsiao" }
+}

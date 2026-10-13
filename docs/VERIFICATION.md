@@ -498,3 +498,54 @@ collector 的 log 全程是空的，沒有例外。
 | 10 | 移開 `keys.npy` 跑 dark-ui 的 `audio.py` | `audio ok 35.8`（改用合成打字聲） |
 
 **沒驗到的**：ci、codex、skill、sso、webex 這 5 個範例在搬移後只做了語法檢查，沒有重跑；line-icon 成品只看了 snapshot，沒有逐秒聽過音效的時間點。
+
+## 2026-10-13　model-router（TypeSafe Jev 版）驗證
+
+自動化：`claude plugin test .` 21 pass／0 fail；`tsc --noEmit` 0 error；`claude plugin validate .` 通過。
+
+真實 session（Claude Code 2.1.296、主模型 Opus 5.5、tmux 開互動模式、`--plugin-dir` 載入），模型從 session 紀錄 JSONL 的 `message.model` 讀：
+
+| # | 操作 | 狀態列 | 實際模型 |
+|---:|---|---|---|
+| 1 | `/router on` | `🧭 自動分配` | — |
+| 2 | 把這句翻成英文：你好，很高興認識你 | `haiku-5-5（1.00）` | 7 個 step 全部 `claude-haiku-5-5` |
+| 3 | 寫 Python 去重保序函式（貼在回覆） | `opus-5-5（0.74，不確定升一級）` | `claude-opus-5-5` |
+| 4 | `!opus 1+1…` | — | **被當成 shell 指令**（`command not found`）→ 前綴改成 `~` |
+| 5 | 這段程式的時間複雜度是多少？ | `opus-5-5（0.41，不確定升一級，對話太長不降級）` | `claude-opus-5-5` |
+| 6 | 好，謝謝 | 沿用第 5 則的判斷 | `claude-opus-5-5` |
+| 7 | 重開 session | 一開就是 `🧭 自動分配`（開關有保留） | — |
+| 8 | `~haiku 解釋 Rust 的 borrow checker…` | `haiku-5-5（指定 haiku）` | `claude-haiku-5-5`，送出的 prompt 已拿掉 `~haiku` |
+| 9 | 寫 TypeScript debounce（貼在回覆） | `sonnet-5-5（0.97）` | `claude-sonnet-5-5` |
+| 10 | `/router off` | 狀態列清掉 | — |
+
+**看到的問題**：
+- 這台的 system prompt＋工具定義在第一輪就約 7%（1M 視窗，約 70k tokens），所以第二輪起 context 都超過 40,000，從 Opus 開始的 session 之後只會升不會降。第 5 則就是這樣卡在 Opus。
+- 實際 prompt 的信心比離線測試低（0.74、0.41 對 0.97–1.00），推測跟 state 帶了上一則 prompt 有關，沒有再細分驗證。
+
+**沒驗到的**：Jev 逾時（1.5 秒）與沒有 key 的提示只在測試裡驗過，真實 session 沒有觸發。
+
+## 2026-10-14　model-router 改三點後驗證
+
+自動化：`claude plugin test .` 26 pass／0 fail；`tsc --noEmit` 0 error；`claude plugin validate .` 通過。
+
+離線比較問法（16 題，標準答案我標的）：舊 14/16（信心均值 0.82）、新＋上一則 15/16（0.85）、新不附上一則 16/16（0.88），延遲 219–415 ms。
+
+第一次真實 session：等待腳本判斷太早，後 4 則都在前一輪還沒結束時送出，全部「沿用」haiku → 發現排隊 prompt 不會被判斷的 bug，修正後重測。
+
+第二次真實 session（Claude Code 2.1.296、主模型 Opus 5.5，以 session 紀錄的 `turn_duration` 判斷每輪結束；模型與長度從 JSONL 讀）：
+
+| # | prompt | 狀態列 | 實際模型 | context |
+|---:|---|---|---|---:|
+| 1 | 把這句翻成英文：你好… | `haiku-5-5（1.00）` | haiku ×6 | 63,400 |
+| 2 | TypeScript debounce | `sonnet-5-5（0.69）` | sonnet ×4 | 63,973 |
+| 3 | 這段程式的時間複雜度是多少？ | `sonnet-5-5（0.61）` | sonnet ×4 | 65,241 |
+| 4 | production 偶爾 500（三句話列原因） | `sonnet-5-5（0.07，不確定不降級）` | sonnet ×5 | 67,707 |
+| 5 | 把這句翻成英文：今天天氣很好 | `haiku-5-5（1.00）` | haiku ×5 | 68,551 |
+| 6 | 用五句話介紹台灣的夜市文化 | （第 7 則排隊時送出） | haiku ×5 | 69,118 |
+| 7 | 多租戶 SaaS 隔離架構（第 6 則還在跑時就送出） | `opus-5-5（0.76）` | opus ×5 | 69,987 |
+
+- 第 5 則從 sonnet 降回 haiku：開場約 63k，之後只多了約 5k，沒有被長度規則擋住（上一版這裡會卡在 Opus）。
+- 第 7 則是排隊送出的，輪到它時換成 opus。
+- 第 4 則預期 opus，Jev 卻給了信心 0.07 的低一級答案，被「不確定不降級」擋住、留在 sonnet。加上「三句話就好、不要動手查」後判斷變差，離線同一題（沒有這句）是 opus 0.83。
+
+**沒驗到的**：compact 後開場基準下修只有單元測試；排隊 prompt 被送進正在跑的那一輪（而不是排成下一輪）的情況沒有在真實 session 觸發。

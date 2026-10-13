@@ -553,3 +553,47 @@ repo 有推到 GitHub，而這份鍵盤錄音的授權還沒確認，所以先�
 ### 接受 lint 的 composition_file_too_large
 
 dark-ui 的 `index.html` 有 479 行。拆成 sub-composition 會打散 head.part／body.part 的分工，所以這個 warning 刻意保留。
+
+## 2026-10-13　model-router 復活：改由 TypeSafe Jev 判斷
+
+使用者定了：沿用 `model-router` 這個名字、三選一（haiku／sonnet／opus）、`/router` 開關、只升不降門檻 40,000 tokens。下面是我自己決定的部分。
+
+### 從舊版救回骨架，只換判斷
+
+`turn.step` 改寫 model、一個 turn 只決定一次、強制指定前綴（改成 `~opus`：輸入框打 `!` 會進 shell 模式，舊版的 `!opus` 其實送不到模型）都沿用 9b9029f 之前的版本。關鍵字規則換成 TypeSafe Choice（三選一）＋ Score（難度，只記錄不參與決定）。實測 9 個 prompt 三選一 9/9，但測試題和 criteria 的舉例相近，真實準確率要用實際 prompt 再看。
+
+### 預設關，狀態存 `$.store`
+
+舊版預設開而且不存狀態，重開就回到開。新版跟 mascot、done-ding 一樣存起來，預設關，因為每則 prompt 會多一次外部呼叫（約 0.3 秒、約 550 token）。
+
+### 拿掉子 agent 分流與 effort 拉高
+
+舊版會把 Explore 換成 haiku、難題把 effort 拉到 high。子 agent 現在交給 Agent Dock；effort 一律沿用使用者設定，只有換成 Haiku 時拿掉（Haiku 不吃 effort）。
+
+### 出錯就不換
+
+沒有 key、1.5 秒逾時、非 2xx、回應看不懂，這一輪都沿用上一輪的模型並跳提示。選錯模型比多付一點錢糟，所以信心低於 0.8 也往上升一級。
+
+**代價**：每則真人 prompt 送出前多等約 0.3 秒；12 字以內的接續（「好」「繼續」）不問 Jev，直接沿用上一輪，短但其實是新任務的 prompt 會被分錯，可以用 `~模型` 蓋過。
+
+## 2026-10-14　model-router：參考 jev-router 改三點
+
+使用者同意照 jev-router（gargpratyush/jev-router）的作法改三點。數字是我自己定的。
+
+### 問法：只送這則 prompt 與目前模型，不送上一則
+
+instructions 改成「最便宜、一次就能做完、看推理不看回覆長短」，每個選項寫成「What／Signals／Not for」三段。離線 16 題（標準答案是我標的）：舊問法 14/16、平均信心 0.82；新問法附上一則 15/16、0.85；新問法不附 16/16、0.88。附上一則會把「這段程式的時間複雜度是多少？」拉成 haiku，所以拿掉。
+
+**代價**：超過 12 字、但其實是接續的 prompt（「照你的提案做，名稱改成…」）只能就字面判斷。
+
+### 低信心：不降級，不再升一級
+
+舊規則（< 0.8 升一級）在真實 session 把兩題都推上 Opus。改成 < 0.5 時不往下換、往上照換。門檻取 0.5：jev-router 用 0.3，我的離線資料裡錯的那題信心 0.31–0.43，0.5 才擋得住；之後看實際資料再調。
+
+### 對話長度：只算比開場多出的部分
+
+開場長度＝這個 session 看過最小的非零 `context.tokens`，每個主對話 step 都量（router 關著也量，中途打開才算得對；compact 後會自動下修）。門檻維持使用者定的 40,000。沒有照 jev-router 只算 messages：換模型時 system prompt 與工具定義也要重寫快取，只是這段每次都一樣，拿它當基準比較合理。
+
+### 修正：執行中先打好的 prompt 不會被判斷
+
+真實 session 發現：Claude 還在回答時打的下一則，`prompt.submit` 帶著正在跑的 `turnId`，舊程式當成「送進目前這一輪」直接跳過，排到下一輪時就一律沿用。現在照樣判斷、以文字為 key 暫存，`turn.start` 帶同樣文字時才套用；被送進正在跑的那一輪的就用不到，最多留 20 筆。
