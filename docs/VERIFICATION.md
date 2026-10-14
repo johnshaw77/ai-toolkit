@@ -583,3 +583,20 @@ collector 的 log 全程是空的，沒有例外。
 | 3 | 比較鴻海、台積電、聯發科主要業務 | Jev 判 3 人（0.48），最多拆 3 份 | 最多 3 份 | 0 |
 
 第 2 則上一版（最多 3 份）是 0 位，這版 3 位。驗完 `/dock 1` 還原，重開確認徽章是「團隊 1 人」。
+
+## 2026-10-14　topic-shift
+
+自動化：`claude plugin test .` 18 pass／0 fail（純函式 7、整合 11）；`claude plugin validate .` 通過。
+
+真實 Jev（同一段前文：登入表單加 email 驗證、錯誤訊息改紅色）：
+
+| # | 新請求 | 預期 | Jev 回 |
+|---:|---|---|---|
+| 1 | 再加上電話號碼的驗證，規則一樣 | 有關 | related（1.00） |
+| 2 | 剛剛那個 regex 能不能支援 + 號？ | 有關 | related（1.00） |
+| 3 | 測試跑一下看有沒有壞 | 有關 | related（1.00） |
+| 4 | 幫我把這週的會議紀錄整理成待辦清單 | 無關 | unrelated（1.00） |
+| 5 | 查一下 Docker 怎麼清掉沒用到的 volume | 無關 | unrelated（1.00） |
+| 6 | 寫一個 Python 腳本把 CSV 轉成 JSON | 無關 | unrelated（1.00） |
+
+6/6 符合。**還沒做**：在真實 Claude Code session 裡看到提示出現（mod 尚未加進 `CLAUDE_CODE_PLUGIN_DIRS`）。

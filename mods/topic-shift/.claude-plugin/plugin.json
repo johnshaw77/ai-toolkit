@@ -1,0 +1,8 @@
+{
+  "name": "topic-shift",
+  "version": "0.1.0",
+  "description": "送出 prompt 時問 TypeSafe Jev：這題跟前面的對話有沒有關係？有把握沒關係就提醒你 /clear；/topic on｜off 切換",
+  "author": {
+    "name": "john_hsiao"
+  }
+}

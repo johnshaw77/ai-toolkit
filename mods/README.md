@@ -15,6 +15,7 @@
 | 9 | `gate-lights` | 完成定義的三顆燈：測試、型別檢查、瀏覽器驗證 |
 | 10 | `clean-view` | 簡潔檢視（隱藏工具細節、白話進度清單，`/simple`）＋ Agent Dock（把請求拆給 N 位 helper 的面板，`/dock`；`/dock auto` 由 TypeSafe Jev 判斷要不要拆） |
 | 11 | `model-router` | 依 prompt 難度自動在 Haiku／Sonnet／Opus 之間換模型，由 TypeSafe Jev 判斷；`/router` 開關（預設關），`~opus` 等前綴強制指定 |
+| 12 | `topic-shift` | 送出 prompt 時問 TypeSafe Jev：這題跟前面的對話有沒有關係？有把握沒關係就提醒你 `/clear`；`/topic` 開關（預設開） |
 
 ## 裝到一台電腦
 
@@ -27,7 +28,7 @@
 2. `~/.claude/settings.json` 的 `env` 加上：
 
    ```json
-   "CLAUDE_CODE_PLUGIN_DIRS": "~/.claude/mods/host-badge:~/.claude/mods/context-trim:~/.claude/mods/office:~/.claude/mods/conveyor:~/.claude/mods/nightshift:~/.claude/mods/mascot:~/.claude/mods/mod-list:~/.claude/mods/done-ding:~/.claude/mods/gate-lights:~/.claude/mods/clean-view:~/.claude/mods/model-router"
+   "CLAUDE_CODE_PLUGIN_DIRS": "~/.claude/mods/host-badge:~/.claude/mods/context-trim:~/.claude/mods/office:~/.claude/mods/conveyor:~/.claude/mods/nightshift:~/.claude/mods/mascot:~/.claude/mods/mod-list:~/.claude/mods/done-ding:~/.claude/mods/gate-lights:~/.claude/mods/clean-view:~/.claude/mods/model-router:~/.claude/mods/topic-shift"
    ```
 
    （Windows 用 `;` 分隔）
@@ -49,3 +50,15 @@
   - Claude 還在回答時先打好的 prompt 也會判斷，輪到它那一輪才套用
 - Jev 逾時（1.5 秒）、沒有 key、回錯誤碼：這一輪不換模型，跳一則提示
 - 子 agent 不插手，task-notification 等不是你打的 prompt 沿用上一輪的模型
+
+## topic-shift
+
+每則你自己打的 prompt，如果對話已經比開場多出 10,000 tokens 以上，先問 TypeSafe Jev「這題需不需要前面的對話才能回答好」。Jev 有 0.8 以上的把握說不需要，就跳一則提示：`🧹 這題好像跟前面無關（對話已多 25k tokens），要不要先 /clear？`
+
+- 只提醒，不擋 prompt、不自己清；要不要 `/clear` 你決定
+- 需要環境變數 `TYPESAFE_API_KEY`（同 model-router）；沒有 key 只提示一次
+- `/topic` 切換、`/topic on`、`/topic off`；狀態跨 session 保留，預設開
+- 送給 Jev 的是這則 prompt 加上最近 6 則對話（每則截成 300 字），判的是「依賴」不是「關鍵字相同」；拿不準時回「有關」
+- 不問的情況：斜線指令、12 字以內的接續（「好」「繼續」）、對話還不到 10k、還沒有任何前文、不是你打的 prompt
+- 提醒過一次後，隔 3 則 prompt 才會再提醒；Jev 逾時（1.5 秒）、回錯誤碼就跳提示、不提醒
+- 為什麼要 `/clear`：對話長了之後 model-router 不敢降級（換模型要重寫整段快取）；換到不相干的新題目時直接清掉，對話歸零，下一題又能降到便宜的模型
