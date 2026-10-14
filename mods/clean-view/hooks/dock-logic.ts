@@ -112,6 +112,18 @@ export function capMessage(n: number): string {
   return `Team Size is ${n}: this request already has ${n} helpers. Finish with the helpers you have.`
 }
 
+/** 自動模式要拆時：最多 n 份，只拆真正獨立的部分 */
+export function upToInstruction(n: number): string {
+  return [
+    `Agent Dock — up to ${n} helpers.`,
+    `- If this request has genuinely independent parts, split it into at most ${n} pieces and launch one helper (the Agent tool) per piece, all in one message so they run in parallel.`,
+    '- Only split work that can run without waiting for another piece. If it is one task, a question, or steps that depend on each other, do it yourself without helpers. Never pad with useless work.',
+    '- Give each helper a short plain Traditional Chinese description of 3 to 5 words, e.g. 「比價：Panera」.',
+    `- In each helper's prompt add: "${HELPER_PROGRESS_LINE}"`,
+    '- When they finish, combine their results into one answer.',
+  ].join('\n')
+}
+
 export const NUDGE_PREFIX = 'You used '
 
 export function nudgeText(used: number, n: number): string {
@@ -126,11 +138,12 @@ export const HELPER_PLAN_ANSWER = 'Helpers skip the plan. Just call report_progr
 
 // ---------- 工作與卡片 ----------
 
-export function newDockJob(id: string, request: string, size: number, now: number): DockJob {
+export function newDockJob(id: string, request: string, size: number, now: number, isUpTo = false): DockJob {
   return {
     id,
     name: jobName(request),
     size,
+    isUpTo,
     phase: 'live',
     startedAt: now,
     finishedAt: null,
@@ -253,8 +266,8 @@ export function clock(ms: number): string {
   return m >= 60 ? `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}:${s}` : `${m}:${s}`
 }
 
-export function badge(job: DockJob | null, teamSize: number): string {
-  if (job === null || job.phase !== 'live') return `◆ Dock 待命 · 團隊 ${teamSize} 人`
+export function badge(job: DockJob | null, teamSize: number, isAuto = false): string {
+  if (job === null || job.phase !== 'live') return `◆ Dock 待命 · 團隊 ${isAuto ? '自動' : `${teamSize} 人`}`
   const c = counts(job)
   return `◆ 工作中 ${c.working} · 排隊 ${c.queued} · 完成 ${c.done}${c.stuck > 0 ? ` · 卡住 ${c.stuck}` : ''}`
 }
@@ -271,7 +284,8 @@ export function modelLabel(model: DockHelperModel): string {
   return model === 'fast' ? '快速省錢' : '跟你同一個模型'
 }
 
-export function infoLine(size: number, perWave: number, model: DockHelperModel): string {
+export function infoLine(size: number, perWave: number, model: DockHelperModel, isAuto = false): string {
+  if (isAuto) return `由 Jev 判斷要不要拆，最多 ${AUTO_MAX} 位  ·  一次 ${Math.min(AUTO_MAX, perWave)} 位  ·  ${modelLabel(model)}`
   const split = size === 1 ? '由 Claude 決定要幾位助手' : `每個請求拆給 ${size} 位助手`
   return `${split}  ·  一次 ${Math.min(size, perWave)} 位  ·  ${modelLabel(model)}`
 }
@@ -325,4 +339,62 @@ export function chunk<T>(items: readonly T[], size: number): T[][] {
   const out: T[][] = []
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size))
   return out
+}
+
+// ---------- 自動人數：問 TypeSafe Jev 要幾位 ----------
+
+export const AUTO_MAX = 3
+// 判成 1 人且信心夠才不拆；其他情況交給 Claude 在 3 位以內自己決定
+export const AUTO_MIN_CONFIDENCE = 0.8
+export const TYPESAFE_URL = 'https://api.typesafe.ai/v1/systemone'
+export const JEV_TIMEOUT_MS = 1500
+
+export type TeamVerdict = { size: number; confidence: number }
+export type AutoPlan = { size: number; isUpTo: boolean; note: string }
+
+/** `/dock auto`、`/dock 自動`，後面可以接要送出的問題；不是自動回傳 null */
+export function parseAuto(args: string): { ask: string } | null {
+  const match = args.trim().match(/^(auto|自動)(?:\s+([\s\S]*))?$/i)
+  return match === null ? null : { ask: (match[2] ?? '').trim() }
+}
+
+export function buildTeamRequest(text: string): string {
+  return JSON.stringify({
+    state: JSON.stringify({ request: text }),
+    model: 'jev-latest',
+    questions: {
+      team: {
+        type: 'choice',
+        instructions:
+          'How many helpers should work on `request` in parallel? Count only pieces that are genuinely independent: each can be done without waiting for another\'s result, and each is substantial enough to be worth a separate agent. A question, a short follow-up, a single change, or steps that depend on each other need 1 helper.',
+        criteria: {
+          '1': 'One coherent task, a question or explanation, a short reply or approval, or sequential steps where each needs the previous result.',
+          '2': 'Exactly two independent workstreams, e.g. two separate items, sources, files or sub-questions that can be researched or done in parallel.',
+          '3': 'Three or more independent workstreams, e.g. comparing several options, checking several machines, sources or files, or several separate sub-tasks.',
+        },
+      },
+    },
+  })
+}
+
+/** 讀 Jev 回應；格式不對回傳 undefined（當成沒把握） */
+export function parseTeamVerdict(body: string): TeamVerdict | undefined {
+  let json: unknown
+  try {
+    json = JSON.parse(body)
+  } catch {
+    return undefined
+  }
+  const team = (json as { answers?: { team?: { choice?: unknown; confidence?: unknown } } }).answers?.team
+  const size = Number(team?.choice)
+  if (![1, 2, 3].includes(size) || typeof team?.confidence !== 'number') return undefined
+  return { size, confidence: team.confidence }
+}
+
+export function autoPlan(v: TeamVerdict | undefined): AutoPlan {
+  if (v !== undefined && v.size === 1 && v.confidence >= AUTO_MIN_CONFIDENCE) {
+    return { size: 1, isUpTo: false, note: `Jev 判 1 人（${v.confidence.toFixed(2)}），不拆` }
+  }
+  const why = v === undefined ? 'Jev 沒有回答' : `Jev 判 ${v.size} 人（${v.confidence.toFixed(2)}）`
+  return { size: AUTO_MAX, isUpTo: true, note: `${why}，最多拆 ${AUTO_MAX} 份` }
 }

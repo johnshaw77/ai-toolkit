@@ -549,3 +549,23 @@ collector 的 log 全程是空的，沒有例外。
 - 第 4 則預期 opus，Jev 卻給了信心 0.07 的低一級答案，被「不確定不降級」擋住、留在 sonnet。加上「三句話就好、不要動手查」後判斷變差，離線同一題（沒有這句）是 opus 0.83。
 
 **沒驗到的**：compact 後開場基準下修只有單元測試；排隊 prompt 被送進正在跑的那一輪（而不是排成下一輪）的情況沒有在真實 session 觸發。
+
+## 2026-10-14　Agent Dock 自動人數驗證
+
+自動化：`claude plugin test .`（clean-view）37 pass／0 fail，新增 11 個；`claude plugin validate .` 通過，env reads 多了 `TYPESAFE_API_KEY`；`tsc --noEmit` 只剩改動前就有的 2 個 TS2589（`clean-view.tsx:324`、`clean-view.test.tsx:90`）。
+
+真實 session（Claude Code 2.1.296；model-router 也開著，所以主模型會被換）。指示與 Agent 呼叫從 session JSONL 讀：
+
+| # | 模式 | 請求 | Jev | 附上的指示 | 派出的 helper |
+|---:|---|---|---|---|---:|
+| 1 | 自動 | 模型路由器不考慮 sonnet 嗎？一句話 | 1 人 | 無 | 0 |
+| 2 | 自動 | 比較鴻海、台積電、聯發科主要業務 | 3 人（0.43） | 最多 3 份 | 0 |
+| 3 | 自動 | 分別讀三個 mod 的 register 檔各寫兩句 | 3 人（0.91） | 最多 3 份 | 0 |
+| 4 | 自動 | 三個 mod 各寫約 300 字使用說明 | — | 最多 3 份 | 0 |
+| 5 | 手動 3 | 同第 3 則 | — | 剛好 3 份 | 3 |
+
+- 重開 session 後徽章是「團隊 自動」：開關有存下來。
+- 第 3 則第一次在 scratchpad 目錄跑，主對話自己讀檔、跳出「讀取工作目錄外的檔案」權限詢問，按 Esc 取消，改在 ai-toolkit 目錄重跑。
+- 驗完用 `/dock 1` 還原使用者原本的設定，重開確認徽章是「團隊 1 人」。
+
+**看到的問題**：附「最多 3 份」時 Claude 一次都沒拆（4/4），自動模式等於「Jev 判 1 人就安靜、其他時候多一段 Claude 會忽略的指示」。

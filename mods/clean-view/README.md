@@ -30,6 +30,7 @@
   輸入框上方那列的 `◆ Dock` 按鈕也能打開。
 - `/dock 10`：設定團隊人數（1 到 100）。超過 20 要在面板裡按確認，而且下次開新 session 會回到 1。
 - `/dock 3 收集鴻海、台積電最新消息`：一行完成，設好人數就把後面的問題送出。
+- `/dock auto`（或面板上的「自動」）：每個請求先問 TypeSafe Jev 要幾位。判成 1 人且信心 ≥ 0.8 就不拆；其他情況附上「最多拆 3 份」的指示，由 Claude 決定實際派幾位（少派不補送提醒）。需要環境變數 `TYPESAFE_API_KEY`，沒有或連不上就一律最多 3 份。`/dock 3` 等手動人數維持「剛好 N 份」。
 - 人數 1：由 Claude 自己決定要不要找 helper，什麼都不加。
 - 人數 N：請求會帶上「剛好拆成 N 份」的指示；超過 N 個會被擋下，派了但不到 N 個會補送一次提醒（一位都沒派代表不適合拆，不提醒）；
   超過同時上限（`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` 與 `CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY`
@@ -56,7 +57,7 @@
 | 3 | `hooks/checklist.ts` | 純邏輯：名稱清理、寬度計算、步驟推進 |
 | 4 | `types/index.d.ts` | 共用 state 的型別（`clean-view` 底下） |
 | 5 | `hooks/dock.tsx` | Agent Dock：所有 `$` 呼叫（面板、指令、上限、排隊、回報） |
-| 6 | `hooks/dock-logic.ts` | Agent Dock 純邏輯：人數、名稱、徽章、計數、總結、進度條 |
+| 6 | `hooks/dock-logic.ts` | Agent Dock 純邏輯：人數、名稱、徽章、計數、總結、進度條、自動人數（Jev 請求與判斷） |
 | 7 | `tests/*.test.tsx` | `claude plugin test .` |
 
 其他 mod 可以讀 `$.state.get({ plugin: 'clean-view', key: 'checklist' })` 拿到目前的清單。

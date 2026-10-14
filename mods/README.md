@@ -13,7 +13,7 @@
 | 7 | `mod-list` | `/mods` 列出所有 mod：名稱、斜線指令、有沒有載入、做什麼 |
 | 8 | `done-ding` | 長任務結束時響一聲並跳系統通知；`/ding` 開關與調門檻 |
 | 9 | `gate-lights` | 完成定義的三顆燈：測試、型別檢查、瀏覽器驗證 |
-| 10 | `clean-view` | 簡潔檢視（隱藏工具細節、白話進度清單，`/simple`）＋ Agent Dock（把請求拆給 N 位 helper 的面板，`/dock`） |
+| 10 | `clean-view` | 簡潔檢視（隱藏工具細節、白話進度清單，`/simple`）＋ Agent Dock（把請求拆給 N 位 helper 的面板，`/dock`；`/dock auto` 由 TypeSafe Jev 判斷要不要拆） |
 | 11 | `model-router` | 依 prompt 難度自動在 Haiku／Sonnet／Opus 之間換模型，由 TypeSafe Jev 判斷；`/router` 開關（預設關），`~opus` 等前綴強制指定 |
 
 ## 裝到一台電腦

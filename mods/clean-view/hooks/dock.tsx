@@ -7,7 +7,15 @@ import type { EngineInterface, On, RenderElement, Timer } from 'claude-code'
 import type { DockCard, DockJob, DockState } from '../types'
 import { clampPercent, displayWidth, fitCells } from './checklist'
 import {
+  AUTO_MAX,
   BIG_TEAM,
+  JEV_TIMEOUT_MS,
+  TYPESAFE_URL,
+  autoPlan,
+  buildTeamRequest,
+  parseAuto,
+  parseTeamVerdict,
+  upToInstruction,
   COLORS,
   DOCK_COLUMNS,
   DOCK_PANE,
@@ -53,6 +61,8 @@ type Engine = EngineInterface
 
 const INITIAL: DockState = {
   teamSize: 1,
+  isAuto: false,
+  autoNote: null,
   pendingSize: null,
   isCustomOpen: false,
   helperModel: 'fast',
@@ -64,6 +74,7 @@ const dock = atom({ plugin: 'clean-view', key: 'dock' } as const, INITIAL)
 const dockTick = atom({ plugin: 'clean-view', key: 'dockTick' } as const, 0)
 
 const STORE_SIZE = 'dock.teamSize'
+const STORE_AUTO = 'dock.isAuto'
 const STORE_MODEL = 'panel.helperModel'
 const PROGRESS_TOOL = 'mcp__clean-view__report_progress'
 const PLAN_TOOL = 'mcp__clean-view__plan_steps'
@@ -74,6 +85,7 @@ let ticker: Timer | null = null
 let agentsFile: string | null = null
 let lastWritten = ''
 let lastStatus: string | undefined = undefined
+let hasWarnedKey = false
 
 // ---------- 共用 ----------
 
@@ -83,7 +95,7 @@ async function isDockOpen($: Engine): Promise<boolean> {
 
 /** 收起時在狀態列放徽章；把即時人數寫給狀態列讀。 */
 async function syncOutside($: Engine, s: DockState): Promise<void> {
-  const text = (await isDockOpen($)) ? undefined : badge(s.job, s.teamSize)
+  const text = (await isDockOpen($)) ? undefined : badge(s.job, s.teamSize, s.isAuto)
   if (text !== lastStatus) {
     lastStatus = text
     $.ui.status(text)
@@ -123,8 +135,38 @@ async function changeJob($: Engine, fn: (job: DockJob) => DockJob): Promise<Dock
 }
 
 async function setSize($: Engine, n: number): Promise<void> {
-  await change($, s => ({ ...s, teamSize: n, pendingSize: null, isCustomOpen: false }))
+  await change($, s => ({ ...s, teamSize: n, isAuto: false, pendingSize: null, isCustomOpen: false }))
   await $.store.set(STORE_SIZE, n)
+  await $.store.set(STORE_AUTO, false)
+}
+
+async function setAuto($: Engine): Promise<void> {
+  await change($, s => ({ ...s, isAuto: true, pendingSize: null, isCustomOpen: false }))
+  await $.store.set(STORE_AUTO, true)
+}
+
+/** 自動模式：問 Jev 這個請求要幾位。沒有 key、逾時、出錯都回 undefined（當成沒把握，最多拆 3 份） */
+async function judgeTeam($: Engine, text: string): Promise<ReturnType<typeof parseTeamVerdict>> {
+  const key = await $.env.get('TYPESAFE_API_KEY')
+  if (key === undefined || key === '') {
+    if (!hasWarnedKey) $.ui.toast('Agent Dock 自動：沒有 TYPESAFE_API_KEY，一律最多拆 3 份')
+    hasWarnedKey = true
+    return undefined
+  }
+  try {
+    // $ 呼叫期間 hook 預算會暫停，fetch 卡住不會被切斷，所以自己限時
+    const res = await Promise.race([
+      $.http.fetch(TYPESAFE_URL, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: buildTeamRequest(text),
+      }),
+      $.clock.sleep(JEV_TIMEOUT_MS).then(() => undefined),
+    ])
+    return res === undefined || !res.ok ? undefined : parseTeamVerdict(res.text)
+  } catch {
+    return undefined
+  }
 }
 
 /** 由指令或按鈕觸發才開，這樣窄視窗也放得下。 */
@@ -160,6 +202,7 @@ export function registerDock(on: On): void {
     const saved = await $.store.get(STORE_SIZE)
     const size = restoreSize(saved)
     if (saved !== size && saved !== undefined) await $.store.set(STORE_SIZE, size)
+    const isAuto = (await $.store.get(STORE_AUTO)) === true
     const model = (await $.store.get(STORE_MODEL)) === 'same' ? 'same' : 'fast'
     const perWave = atATime(
       await $.env.get('CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS'),
@@ -173,10 +216,10 @@ export function registerDock(on: On): void {
 
     await $.command.register({
       name: 'dock',
-      description: 'Agent Dock：/dock 開關面板，/dock 10 設定團隊人數',
-      argumentHint: '[1-100]',
+      description: 'Agent Dock：/dock 開關面板，/dock 10 設定團隊人數，/dock auto 由 Jev 判斷',
+      argumentHint: '[1-100|auto]',
     })
-    await change($, s => ({ ...s, teamSize: s.job?.phase === 'live' ? s.teamSize : size, helperModel: model, atATime: perWave }))
+    await change($, s => ({ ...s, teamSize: s.job?.phase === 'live' ? s.teamSize : size, isAuto, helperModel: model, atATime: perWave }))
     return next(e)
   })
 
@@ -200,8 +243,32 @@ export function registerDock(on: On): void {
         })()
         return { text: '切換 Agent Dock。' }
       }
+      const auto = parseAuto(arg)
+      if (auto !== null) {
+        void (async () => {
+          try {
+            await setAuto($)
+          } finally {
+            openDock($)
+          }
+          if (auto.ask === '') return
+          // 外掛自己送出的 prompt 不經過自己的 prompt.submit hook，所以在這裡先判斷
+          const plan = autoPlan(await judgeTeam($, auto.ask))
+          const now = await $.clock.now()
+          await change($, st => ({ ...st, autoNote: plan.note, job: newDockJob(`job-${now}`, auto.ask, plan.size, now, plan.isUpTo) }))
+          if (plan.isUpTo) {
+            try {
+              await $.session.append({ message: { type: 'user', content: [{ type: 'text', text: upToInstruction(plan.size) }] } })
+            } catch {
+              $.ui.toast('沒能附上拆工指示，這次由 Claude 自己決定要不要拆')
+            }
+          }
+          await $.prompt.submit({ text: auto.ask, asUser: true })
+        })()
+        return { text: auto.ask === '' ? `團隊人數設為自動：由 Jev 判斷要不要拆，最多 ${AUTO_MAX} 位。` : `團隊人數設為自動，送出：${auto.ask}` }
+      }
       const { size: n, ask } = parseDockArgs(arg)
-      if (n === null) return { text: '團隊人數是 1 到 100 的整數，例如 /dock 10 或 /dock 3 你的問題。' }
+      if (n === null) return { text: '團隊人數是 1 到 100 的整數或 auto，例如 /dock 10、/dock auto 或 /dock 3 你的問題。' }
       const willAsk = ask !== '' && n <= BIG_TEAM
       void (async () => {
         try {
@@ -249,6 +316,13 @@ export function registerDock(on: On): void {
     if (!isPerson || text === '' || text.startsWith('/') || text.startsWith('<')) return next(e)
     const s = await read($, dock)
     if (e.turnId !== undefined && s.job?.phase === 'live') return next(e)
+    if (s.isAuto) {
+      const plan = autoPlan(await judgeTeam($, text))
+      const now = await $.clock.now()
+      await change($, st => ({ ...st, autoNote: plan.note, job: newDockJob(`job-${now}`, text, plan.size, now, plan.isUpTo) }))
+      if (!plan.isUpTo) return next(e)
+      return next({ ...e, context: [...(e.context ?? []), upToInstruction(plan.size)] })
+    }
     const now = await $.clock.now()
     await change($, st => ({ ...st, job: newDockJob(`job-${now}`, text, st.teamSize, now) }))
     if (s.teamSize <= 1) return next(e)
@@ -357,7 +431,7 @@ export function registerDock(on: On): void {
     if (job !== null && job.phase === 'live') {
       if (e.reason === 'aborted') {
         await changeJob($, j => stopJob(j, now))
-      } else if (job.size > 1 && job.launched > 0 && job.launched < job.size && !job.hasNudged && e.reason === 'answer') {
+      } else if (!job.isUpTo && job.size > 1 && job.launched > 0 && job.launched < job.size && !job.hasNudged && e.reason === 'answer') {
         // 一位都沒派代表這個請求本來就不適合拆（問答、commit），不提醒
         await changeJob($, j => ({ ...j, hasNudged: true, isMainIdle: false }))
         void $.prompt.submit({ text: nudgeText(job.launched, job.size) })
@@ -408,15 +482,17 @@ export function registerDock(on: On): void {
     const sizeRow = (
       <Box flexDirection="row" flexWrap="wrap">
         <Text color={COLORS.muted}>團 隊 人 數   ╭</Text>
+        {s.isAuto ? chip('自動') : <Button key="size-auto" plain label=" 自動 " onPress={() => void setAuto($)} />}
+        <Text color={COLORS.muted}>│</Text>
         {SIZE_PRESETS.map(n =>
-          n === s.teamSize && s.pendingSize === null ? (
+          !s.isAuto && n === s.teamSize && s.pendingSize === null ? (
             chip(String(n))
           ) : (
             <Button key={`size-${n}`} plain label={` ${n} `} onPress={() => void chooseSize($, n)} />
           ),
         )}
         <Text color={COLORS.muted}>│</Text>
-        {SIZE_PRESETS.includes(s.teamSize as (typeof SIZE_PRESETS)[number]) ? (
+        {s.isAuto || SIZE_PRESETS.includes(s.teamSize as (typeof SIZE_PRESETS)[number]) ? (
           <Button
             key="size-custom"
             plain
@@ -463,7 +539,7 @@ export function registerDock(on: On): void {
         </Box>
       ) : null
 
-    const info = <Text color={COLORS.muted}>{infoLine(s.teamSize, s.atATime, s.helperModel)}</Text>
+    const info = <Text color={COLORS.muted}>{infoLine(s.teamSize, s.atATime, s.helperModel, s.isAuto)}</Text>
     const modelRow = (
       <Box flexDirection="row">
         <Text color={COLORS.muted}>助手模型  </Text>
@@ -488,12 +564,14 @@ export function registerDock(on: On): void {
     const controls: RenderElement[] = [masthead, rule, sizeRow]
     if (customBox) controls.push(customBox)
     if (bigTeamBox) controls.push(bigTeamBox)
-    controls.push(info, modelRow, <Text> </Text>)
+    controls.push(info)
+    if (s.isAuto && s.autoNote !== null) controls.push(<Text color={COLORS.muted}>{`上一個請求：${s.autoNote}`}</Text>)
+    controls.push(modelRow, <Text> </Text>)
 
     // 待命：一排座位
     const hasMission = job !== null && (job.cards.length > 0 || job.size > 1)
     if (!hasMission) {
-      const seats = Math.min(SEAT_LIMIT, s.teamSize)
+      const seats = Math.min(SEAT_LIMIT, s.isAuto ? AUTO_MAX : s.teamSize)
       return (
         <Box flexDirection="column" width={width}>
           {controls}
@@ -502,9 +580,11 @@ export function registerDock(on: On): void {
               <Text color={badgeColor(i)} dimColor={i % 3 === 1}>{'● '}</Text>
             ))}
           </Text>
-          <Text bold>{`你的 ${s.teamSize} 人團隊待命中`}</Text>
+          <Text bold>{s.isAuto ? '自動團隊待命中' : `你的 ${s.teamSize} 人團隊待命中`}</Text>
           <Text color={COLORS.muted}>
-            {s.teamSize === 1 ? '送出請求，由 Claude 決定要不要找助手。' : `送出請求，就會拆給 ${s.teamSize} 位助手。`}
+            {s.isAuto
+              ? `送出請求，由 Jev 判斷要不要拆，最多 ${AUTO_MAX} 位助手。`
+              : s.teamSize === 1 ? '送出請求，由 Claude 決定要不要找助手。' : `送出請求，就會拆給 ${s.teamSize} 位助手。`}
           </Text>
         </Box>
       )

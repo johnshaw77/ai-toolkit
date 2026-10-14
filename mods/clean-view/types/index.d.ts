@@ -60,6 +60,8 @@ export type DockJob = {
   hasNudged: boolean
   /** 主對話這一輪已結束、也沒有等著補送的提醒 */
   isMainIdle: boolean
+  /** 自動模式：size 是上限、不是剛好，少派也不補送提醒 */
+  isUpTo: boolean
   cards: DockCard[]
 }
 
@@ -67,6 +69,10 @@ export type DockHelperModel = 'fast' | 'same'
 
 export type DockState = {
   teamSize: number
+  /** 自動：每個請求由 TypeSafe Jev 判斷要不要拆，最多 3 位 */
+  isAuto: boolean
+  /** 自動模式上一個請求的判斷，顯示在面板上 */
+  autoNote: string | null
   /** 超過 20 人、等你按確認的人數 */
   pendingSize: number | null
   isCustomOpen: boolean
