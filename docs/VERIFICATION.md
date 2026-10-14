@@ -569,3 +569,17 @@ collector 的 log 全程是空的，沒有例外。
 - 驗完用 `/dock 1` 還原使用者原本的設定，重開確認徽章是「團隊 1 人」。
 
 **看到的問題**：附「最多 3 份」時 Claude 一次都沒拆（4/4），自動模式等於「Jev 判 1 人就安靜、其他時候多一段 Claude 會忽略的指示」。
+
+## 2026-10-14　Agent Dock 自動：有把握就強制拆
+
+自動化：clean-view `claude plugin test .` 41 pass／0 fail（新增 9e、10h、10i、10j，改 9b、10e）；`claude plugin validate .` 通過；`tsc` 只剩原本的 2 個 TS2589。
+
+真實 session（ai-toolkit 目錄，`/dock auto`）：
+
+| # | 請求 | 面板上的判斷 | 附上的指示 | 派出的 helper |
+|---:|---|---|---|---|
+| 1 | 模型路由器不考慮 sonnet 嗎？一句話 | Jev 判 1 人（1.00），不拆 | 無 | 0 |
+| 2 | 分別讀三個 mod 的 register 檔各寫兩句 | Jev 判 3 人（0.92），拆成 3 份 | 剛好 3 份 | 3（done-ding、mascot、gate-lights） |
+| 3 | 比較鴻海、台積電、聯發科主要業務 | Jev 判 3 人（0.48），最多拆 3 份 | 最多 3 份 | 0 |
+
+第 2 則上一版（最多 3 份）是 0 位，這版 3 位。驗完 `/dock 1` 還原，重開確認徽章是「團隊 1 人」。

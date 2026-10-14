@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import {
+  autoInstruction,
   autoPlan,
   badge,
   buildTeamRequest,
@@ -321,13 +322,21 @@ test('9. 自動：/dock auto 的參數', () => {
   expect(parseAuto('automatic')).toBeNull()
 })
 
-test('9b. 自動：只有 Jev 判 1 人且信心 ≥ 0.8 才不拆，其他最多拆 3 份', () => {
+test('9b. 自動：信心 ≥ 0.8 照 Jev（1 人不拆、2 或 3 人剛好 N 份），不夠才最多 3 份', () => {
   expect(autoPlan({ size: 1, confidence: 0.98 })).toEqual({ size: 1, isUpTo: false, note: 'Jev 判 1 人（0.98），不拆' })
   expect(autoPlan({ size: 1, confidence: 0.8 }).isUpTo).toBe(false)
+  expect(autoPlan({ size: 2, confidence: 0.99 })).toEqual({ size: 2, isUpTo: false, note: 'Jev 判 2 人（0.99），拆成 2 份' })
+  expect(autoPlan({ size: 3, confidence: 0.8 })).toMatchObject({ size: 3, isUpTo: false })
   expect(autoPlan({ size: 1, confidence: 0.79 })).toMatchObject({ size: 3, isUpTo: true })
-  expect(autoPlan({ size: 2, confidence: 0.99 })).toMatchObject({ size: 3, isUpTo: true })
   expect(autoPlan({ size: 3, confidence: 0.7 })).toEqual({ size: 3, isUpTo: true, note: 'Jev 判 3 人（0.70），最多拆 3 份' })
   expect(autoPlan(undefined)).toEqual({ size: 3, isUpTo: true, note: 'Jev 沒有回答，最多拆 3 份' })
+})
+
+test('9e. 自動：每種判斷附上的指示', () => {
+  expect(autoInstruction(autoPlan({ size: 1, confidence: 0.9 }))).toBeUndefined()
+  expect(autoInstruction(autoPlan({ size: 2, confidence: 0.9 }))).toBe(instruction(2))
+  expect(autoInstruction(autoPlan({ size: 3, confidence: 0.91 }))).toBe(instruction(3))
+  expect(autoInstruction(autoPlan({ size: 3, confidence: 0.43 }))).toBe(upToInstruction(3))
 })
 
 test('9c. 自動：Jev 的請求與回應', () => {
@@ -362,7 +371,7 @@ test('10. 自動：Jev 判 1 人（0.98）就不加任何指示', async ($, on) 
   expect(world.contexts.at(-1)).toBeUndefined()
 })
 
-test('10b. 自動：Jev 判 3 人就帶「最多 3 份」的指示，第 4 位被擋', async ($, on) => {
+test('10b. 自動：Jev 判 3 人但信心不夠就帶「最多 3 份」的指示，第 4 位被擋', async ($, on) => {
   const world = engineBeneath(on, { 'dock.isAuto': true }, { TYPESAFE_API_KEY: 'k' })
   jevBeneath(on, () => jevTeam('3', 0.7))
   await boot($)
@@ -396,7 +405,7 @@ test('10d. 自動：沒有 TYPESAFE_API_KEY 一律最多 3 份', async ($, on) =
 
 test('10e. 自動：最多 3 份只派 1 位，不補送「還有人沒派」的提醒', async ($, on) => {
   const world = engineBeneath(on, { 'dock.isAuto': true }, { TYPESAFE_API_KEY: 'k' })
-  jevBeneath(on, () => jevTeam('2', 0.9))
+  jevBeneath(on, () => jevTeam('2', 0.6))
   await boot($)
   await ask($, '整理前端和後端的 README')
   await agent($, '前端 README')
@@ -438,4 +447,36 @@ test('10g. /dock auto 問題：先問 Jev，判 1 人就不附拆工指示', asy
   expect(bodies).toHaveLength(1)
   expect(world.submitted).toEqual(['我現在能用 model router 了嗎'])
   expect(world.appended).toEqual([])
+})
+
+test('10h. 自動：Jev 判 3 人且信心 0.91 就「剛好 3 份」強制拆', async ($, on) => {
+  const world = engineBeneath(on, { 'dock.isAuto': true }, { TYPESAFE_API_KEY: 'k' })
+  jevBeneath(on, () => jevTeam('3', 0.91))
+  await boot($)
+  await ask($, '分別讀三個 mod 的 register 檔，各寫兩句說明')
+  expect(world.contexts.at(-1)).toEqual([instruction(3)])
+})
+
+test('10i. 自動：判 2 人強制拆，只派 1 位會補送一次提醒', async ($, on) => {
+  const world = engineBeneath(on, { 'dock.isAuto': true }, { TYPESAFE_API_KEY: 'k' })
+  jevBeneath(on, () => jevTeam('2', 0.86))
+  await boot($)
+  await ask($, '把前端和後端的 README 都改成繁體中文')
+  expect(world.contexts.at(-1)).toEqual([instruction(2)])
+  await agent($, '前端 README')
+  await $.turn.complete({ answer: '派出去了', durationMs: 1000, isAborted: false, turnId: 'm1', reason: 'answer' })
+  await settle()
+  expect(world.submitted).toEqual([
+    'You used 1 of 2 helpers. Split the remaining work across the other 1, one helper per piece, all in parallel.',
+  ])
+})
+
+test('10j. /dock auto 問題：判 3 人有把握就附「剛好 3 份」', async ($, on) => {
+  const world = engineBeneath(on, { 'dock.teamSize': 1 }, { TYPESAFE_API_KEY: 'k' })
+  jevBeneath(on, () => jevTeam('3', 0.9))
+  await boot($)
+  await $.command.run({ command: 'dock', args: 'auto 比較鴻海、台積電、聯發科財報', ...COMMAND })
+  await settle()
+  expect(world.submitted).toEqual(['比較鴻海、台積電、聯發科財報'])
+  expect(world.appended).toEqual([instruction(3)])
 })

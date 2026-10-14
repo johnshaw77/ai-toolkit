@@ -11,11 +11,11 @@ import {
   BIG_TEAM,
   JEV_TIMEOUT_MS,
   TYPESAFE_URL,
+  autoInstruction,
   autoPlan,
   buildTeamRequest,
   parseAuto,
   parseTeamVerdict,
-  upToInstruction,
   COLORS,
   DOCK_COLUMNS,
   DOCK_PANE,
@@ -256,9 +256,10 @@ export function registerDock(on: On): void {
           const plan = autoPlan(await judgeTeam($, auto.ask))
           const now = await $.clock.now()
           await change($, st => ({ ...st, autoNote: plan.note, job: newDockJob(`job-${now}`, auto.ask, plan.size, now, plan.isUpTo) }))
-          if (plan.isUpTo) {
+          const extra = autoInstruction(plan)
+          if (extra !== undefined) {
             try {
-              await $.session.append({ message: { type: 'user', content: [{ type: 'text', text: upToInstruction(plan.size) }] } })
+              await $.session.append({ message: { type: 'user', content: [{ type: 'text', text: extra }] } })
             } catch {
               $.ui.toast('沒能附上拆工指示，這次由 Claude 自己決定要不要拆')
             }
@@ -320,8 +321,9 @@ export function registerDock(on: On): void {
       const plan = autoPlan(await judgeTeam($, text))
       const now = await $.clock.now()
       await change($, st => ({ ...st, autoNote: plan.note, job: newDockJob(`job-${now}`, text, plan.size, now, plan.isUpTo) }))
-      if (!plan.isUpTo) return next(e)
-      return next({ ...e, context: [...(e.context ?? []), upToInstruction(plan.size)] })
+      const extra = autoInstruction(plan)
+      if (extra === undefined) return next(e)
+      return next({ ...e, context: [...(e.context ?? []), extra] })
     }
     const now = await $.clock.now()
     await change($, st => ({ ...st, job: newDockJob(`job-${now}`, text, st.teamSize, now) }))

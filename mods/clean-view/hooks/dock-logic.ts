@@ -344,7 +344,7 @@ export function chunk<T>(items: readonly T[], size: number): T[][] {
 // ---------- 自動人數：問 TypeSafe Jev 要幾位 ----------
 
 export const AUTO_MAX = 3
-// 判成 1 人且信心夠才不拆；其他情況交給 Claude 在 3 位以內自己決定
+// 信心夠就照 Jev 的人數（1 人不拆，2、3 人強制拆）；不夠才交給 Claude 在 3 位以內自己決定
 export const AUTO_MIN_CONFIDENCE = 0.8
 export const TYPESAFE_URL = 'https://api.typesafe.ai/v1/systemone'
 export const JEV_TIMEOUT_MS = 1500
@@ -391,10 +391,22 @@ export function parseTeamVerdict(body: string): TeamVerdict | undefined {
   return { size, confidence: team.confidence }
 }
 
+/**
+ * 有把握（信心 ≥ 0.8）就照 Jev：1 人不拆、2 或 3 人「剛好 N 份」強制拆；
+ * 沒把握才「最多 3 份」交給 Claude——實測附「最多」時 Claude 幾乎都自己做（4/4 沒拆）
+ */
 export function autoPlan(v: TeamVerdict | undefined): AutoPlan {
-  if (v !== undefined && v.size === 1 && v.confidence >= AUTO_MIN_CONFIDENCE) {
-    return { size: 1, isUpTo: false, note: `Jev 判 1 人（${v.confidence.toFixed(2)}），不拆` }
+  if (v !== undefined && v.confidence >= AUTO_MIN_CONFIDENCE) {
+    const c = v.confidence.toFixed(2)
+    if (v.size === 1) return { size: 1, isUpTo: false, note: `Jev 判 1 人（${c}），不拆` }
+    return { size: v.size, isUpTo: false, note: `Jev 判 ${v.size} 人（${c}），拆成 ${v.size} 份` }
   }
   const why = v === undefined ? 'Jev 沒有回答' : `Jev 判 ${v.size} 人（${v.confidence.toFixed(2)}）`
   return { size: AUTO_MAX, isUpTo: true, note: `${why}，最多拆 ${AUTO_MAX} 份` }
+}
+
+/** 自動模式這個請求要附的指示；不拆就是 undefined */
+export function autoInstruction(plan: AutoPlan): string | undefined {
+  if (plan.isUpTo) return upToInstruction(plan.size)
+  return plan.size > 1 ? instruction(plan.size) : undefined
 }
