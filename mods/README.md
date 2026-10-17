@@ -5,7 +5,7 @@
 | # | mod | 做什麼 |
 |---:|---|---|
 | 1 | `context-trim` | Bash 輸出超過 400 行／40,000 字時只留頭尾與錯誤行；指令加 `# keep-full` 不剪；compact 時附上保留清單 |
-| 2 | `office` | `/office` 像素辦公室、`/sea` 海上冒險 pane，跟著 Claude 的工作狀態變化 |
+| 2 | `office` | `/office` 像素辦公室、`/sea` 海上冒險 pane，跟著 Claude 的工作狀態變化；預設停用，`claude plugin enable office@inline` 啟用 |
 | 3 | `conveyor` | Claude 工作時的搬運動畫：黃昏城市裡，token 方塊流進正在處理的檔案，機器人小搬推著推車來回走 |
 | 4 | `host-badge` | 輸入框上方的機器名稱色塊（例如 `MBP`），多台電腦跑 Claude 時一眼分辨在哪台；`/badge <名稱>` 當下改名（寫回設定檔）；名稱與顏色也可在 `~/.claude/host-badge.json` 設定 `label`、`color` |
 | 5 | `nightshift` | `/studio` 深夜工作室、`/camp` 山頂露營 pane，跟著 Claude 的工作狀態變化 |
@@ -33,9 +33,26 @@
 
    （Windows 用 `;` 分隔）
 3. `office/hooks/luffy.ts` 不在版控裡，從原本那台手動複製過來，不然 `office` 載入會失敗
-4. 開新的 Claude Code session，輸入 `/mods` 看到清單就是載入成功
+4. 預設停用 `office` 和 `model-router`（上面的路徑還是要留，只是啟動時不載入）：
+
+   ```bash
+   claude plugin disable office@inline
+   claude plugin disable model-router@inline
+   ```
+
+   要用的時候再啟用，然後重開 Claude Code：
+
+   ```bash
+   claude plugin enable office@inline        # /office、/sea
+   claude plugin enable model-router@inline  # /router
+   ```
+
+   停用狀態存在 `~/.claude/settings.json` 的 `enabledPlugins`，每次啟動都保持。
+5. 開新的 Claude Code session，輸入 `/mods` 看到清單就是載入成功（停用的會顯示 `✘ disabled`）
 
 ## model-router
+
+預設停用，要用先 `claude plugin enable model-router@inline` 並重開 Claude Code。
 
 每則你自己打的 prompt 先問 TypeSafe Jev「最小夠用的是 haiku、sonnet 還是 opus」，再把這一輪換成那個模型。狀態列顯示 `🧭 sonnet-5-5（0.98）` 這類目前用的模型與信心。
 
